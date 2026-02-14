@@ -74,9 +74,28 @@ Use this checklist to track Phase 1 progress.
 
 ## Configuration
 
-See `.env.example` for the complete list and example values.
+The stack configuration file is `docker-compose.yml`.
 
-Main variables:
+```yaml
+services:
+  bot:
+    image: ${BOT_IMAGE}
+    container_name: ${BOT_CONTAINER_NAME:-ollama-telegram-bot}
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
+      OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL}
+      ALLOWED_USER_IDS: ${ALLOWED_USER_IDS}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-60}
+      MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-12}
+      TZ: ${TZ:-Europe/Madrid}
+```
+
+See `.env.example` for the complete list and example values.
 
 - `TELEGRAM_BOT_TOKEN`
 - `OLLAMA_BASE_URL`
