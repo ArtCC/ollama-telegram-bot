@@ -7,7 +7,7 @@
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fartcc%2Follama--telegram--bot-181717?logo=github)](https://ghcr.io/artcc/ollama-telegram-bot)
 
 <p align="left">
-  <img src="assets/ollama-telegram-bot.png" alt="Ollama Telegram Bot Logo" width="150">
+  <img src="assets/ollama-telegram-bot.png" alt="Ollama Telegram Bot Avatar" width="150">
 </p>
 
 Open-source Telegram bot to chat with Ollama models running on your server.
@@ -145,6 +145,21 @@ The token must include at least `read:packages` permission.
 
 - [CHANGELOG.md](CHANGELOG.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+
+## 🎨 Bot Avatar
+
+You can use the official bot avatar for your own instance:
+
+<p align="left">
+  <img src="https://github.com/ArtCC/ollama-telegram-bot/blob/main/assets/ollama-telegram-bot.png" alt="Ollama Telegram Bot Avatar" width="200">
+</p>
+
+To set this image as your bot's profile picture:
+1. Right-click the image above and save it
+2. Open [@BotFather](https://t.me/botfather) on Telegram
+3. Send `/setuserpic`
+4. Select your bot
+5. Upload the downloaded image
 
 ## License
 
