@@ -44,6 +44,10 @@ ollama-telegram-bot/
 │       └── telegram.py
 ├── tests/
 │   ├── test_context_store.py
+│   ├── test_context_store_sqlite.py
+│   ├── test_model_preferences_store.py
+│   ├── test_rate_limiter.py
+│   ├── test_settings.py
 │   └── test_telegram_utils.py
 ├── docker-compose.yml
 ├── Dockerfile
@@ -75,6 +79,9 @@ ollama-telegram-bot/
   - `OLLAMA_USE_CHAT_API`
   - `OLLAMA_KEEP_ALIVE`
 - [x] Configuration and deployment docs updated for new Chat API controls.
+- [x] Internal agent routing (planner/analyzer/chat) with natural-language responses only.
+- [x] Persistent SQLite conversation context across restarts.
+- [x] Natural-language-first UX: no extra technical commands required for advanced behavior.
 
 ## Configuration
 
@@ -86,8 +93,8 @@ services:
     image: ${BOT_IMAGE}
     container_name: ${BOT_CONTAINER_NAME:-ollama-telegram-bot}
     restart: unless-stopped
-    # env_file:
-    #   - .env
+    volumes:
+      - ${BOT_DATA_DIR:-./data}:/data
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}

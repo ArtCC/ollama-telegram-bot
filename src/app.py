@@ -7,7 +7,7 @@ from telegram.ext import Application
 from src.bot.error_handler import on_error
 from src.bot.handlers import BotHandlers, register_handlers
 from src.config.settings import load_settings
-from src.core.context_store import InMemoryContextStore
+from src.core.context_store import SQLiteContextStore
 from src.core.model_preferences_store import ModelPreferencesStore
 from src.core.rate_limiter import SlidingWindowRateLimiter
 from src.services.ollama_client import OllamaClient
@@ -24,7 +24,10 @@ def main() -> None:
 
     application = Application.builder().token(settings.telegram_bot_token).build()
 
-    context_store = InMemoryContextStore(max_turns=settings.max_context_messages)
+    context_store = SQLiteContextStore(
+        db_path=settings.model_prefs_db_path,
+        max_turns=settings.max_context_messages,
+    )
     model_preferences_store = ModelPreferencesStore(settings.model_prefs_db_path)
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,

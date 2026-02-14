@@ -11,6 +11,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added automatic fallback to `/api/generate` when chat requests fail.
 - Added `OLLAMA_USE_CHAT_API` and `OLLAMA_KEEP_ALIVE` runtime configuration flags.
 - Updated deployment/docs configuration to expose Chat API migration settings.
+- Added internal natural-language agent routing (planner/analyzer/chat) inside message flow without exposing technical commands.
+- Added persistent SQLite-based conversation context to preserve chat memory across bot restarts.
+- Consolidated natural-language-first UX so advanced orchestration happens internally without extra user commands.
 
 ## [0.0.1] - 2026-02-14
 

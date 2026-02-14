@@ -21,7 +21,7 @@ from telegram.ext import (
     filters,
 )
 
-from src.core.context_store import InMemoryContextStore
+from src.core.context_store import ContextStore, ConversationTurn
 from src.core.model_preferences_store import ModelPreferencesStore
 from src.core.rate_limiter import SlidingWindowRateLimiter
 from src.services.ollama_client import (
@@ -52,7 +52,7 @@ class BotHandlers:
     def __init__(
         self,
         ollama_client: OllamaClient,
-        context_store: InMemoryContextStore,
+        context_store: ContextStore,
         model_preferences_store: ModelPreferencesStore,
         default_model: str,
         use_chat_api: bool,
@@ -437,6 +437,8 @@ class BotHandlers:
         turns = self._context_store.get_turns(user_id)
         model = self._get_user_model(user_id)
         started_at = monotonic()
+        agent_name = self._select_agent(user_text)
+        system_instruction = self._agent_system_instruction(agent_name)
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
@@ -446,6 +448,7 @@ class BotHandlers:
                 model=model,
                 prompt=user_text,
                 turns=turns,
+                system_instruction=system_instruction,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -472,9 +475,10 @@ class BotHandlers:
 
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
-            "message_completed user_id=%s model=%s input_chars=%d output_chars=%d elapsed_ms=%d",
+            "message_completed user_id=%s model=%s agent=%s input_chars=%d output_chars=%d elapsed_ms=%d",
             user_id,
             model,
+            agent_name,
             len(user_text),
             len(ollama_response.text),
             elapsed_ms,
@@ -489,14 +493,18 @@ class BotHandlers:
         user_id: int,
         model: str,
         prompt: str,
-        turns: list,
+        turns: list[ConversationTurn],
+        system_instruction: str,
     ):
+        turns_for_model: list[ConversationTurn] = [ConversationTurn(role="system", content=system_instruction)]
+        turns_for_model.extend(turns)
+
         if self._use_chat_api:
             try:
                 return await self._ollama_client.chat(
                     model=model,
                     prompt=prompt,
-                    context_turns=turns,
+                    context_turns=turns_for_model,
                     keep_alive=self._keep_alive,
                 )
             except OllamaError as error:
@@ -510,7 +518,53 @@ class BotHandlers:
         return await self._ollama_client.generate(
             model=model,
             prompt=prompt,
-            context_turns=turns,
+            context_turns=turns_for_model,
+        )
+
+    @staticmethod
+    def _select_agent(user_text: str) -> str:
+        text = user_text.lower()
+
+        planning_keywords = [
+            "plan",
+            "roadmap",
+            "step by step",
+            "paso a paso",
+            "planifica",
+            "estrategia",
+        ]
+        analysis_keywords = [
+            "resume",
+            "resumen",
+            "analiza",
+            "análisis",
+            "extrae",
+            "clasifica",
+            "category",
+            "sentiment",
+        ]
+
+        if any(keyword in text for keyword in planning_keywords):
+            return "planner"
+        if any(keyword in text for keyword in analysis_keywords):
+            return "analyst"
+        return "chat"
+
+    @staticmethod
+    def _agent_system_instruction(agent_name: str) -> str:
+        if agent_name == "planner":
+            return (
+                "You are a planning assistant. Reply in natural language with clear actionable steps, "
+                "prioritize practical guidance, and avoid JSON unless the user explicitly requests JSON."
+            )
+        if agent_name == "analyst":
+            return (
+                "You are an analysis assistant. Reply in concise natural language with key findings, "
+                "high-confidence conclusions, and avoid JSON unless the user explicitly requests JSON."
+            )
+        return (
+            "You are a conversational assistant. Reply naturally, clearly, and helpfully. "
+            "Do not output JSON unless the user explicitly asks for JSON."
         )
 
     def _get_user_model(self, user_id: int) -> str:

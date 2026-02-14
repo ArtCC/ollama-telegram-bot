@@ -4,6 +4,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from time import monotonic
+from typing import Any
 
 import httpx
 
@@ -120,6 +121,8 @@ class OllamaClient:
         prompt: str,
         context_turns: list[ConversationTurn],
         keep_alive: str,
+        response_format: str | dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None,
     ) -> OllamaResponse:
         started_at = monotonic()
         messages = self._compose_messages(prompt=prompt, context_turns=context_turns)
@@ -129,6 +132,10 @@ class OllamaClient:
             "stream": False,
             "keep_alive": keep_alive,
         }
+        if response_format is not None:
+            payload["format"] = response_format
+        if options:
+            payload["options"] = options
 
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
@@ -144,12 +151,13 @@ class OllamaClient:
 
                 elapsed_ms = int((monotonic() - started_at) * 1000)
                 logger.info(
-                    "ollama_chat_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d keep_alive=%s",
+                    "ollama_chat_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d keep_alive=%s structured=%s",
                     model,
                     len(prompt),
                     len(context_turns),
                     elapsed_ms,
                     keep_alive,
+                    response_format is not None,
                 )
                 return OllamaResponse(text=text)
             except httpx.TimeoutException as error:
@@ -246,7 +254,14 @@ class OllamaClient:
 
         context_lines: list[str] = []
         for turn in context_turns:
-            role_label = "User" if turn.role == "user" else "Assistant"
+            if turn.role == "system":
+                role_label = "System"
+            elif turn.role == "tool":
+                role_label = "Tool"
+            elif turn.role == "user":
+                role_label = "User"
+            else:
+                role_label = "Assistant"
             context_lines.append(f"{role_label}: {turn.content}")
 
         context_lines.append(f"User: {prompt}")
