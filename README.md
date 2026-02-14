@@ -6,6 +6,10 @@
 [![Docker Compose](https://img.shields.io/badge/Docker%20Compose-Ready-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io%2Fartcc%2Follama--telegram--bot-181717?logo=github)](https://ghcr.io/artcc/ollama-telegram-bot)
 
+<p align="left">
+  <img src="assets/ollama-telegram-bot.png" alt="Ollama Telegram Bot Logo" width="150">
+</p>
+
 Open-source Telegram bot to chat with Ollama models running on your server.
 
 ## Overview
