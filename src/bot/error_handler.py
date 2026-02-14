@@ -13,5 +13,5 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     if isinstance(update, Update) and update.effective_message:
         await update.effective_message.reply_text(
-            "An unexpected error occurred. Please try again in a few seconds."
+            "❌ An unexpected error occurred. Please try again in a few seconds."
         )

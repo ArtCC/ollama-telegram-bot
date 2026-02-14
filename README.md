@@ -53,28 +53,17 @@ ollama-telegram-bot/
 
 ## Phase 1 (MVP)
 
-Use this checklist to track Phase 1 progress.
-
-- [x] Bot foundation and strict environment-based configuration.
-- [x] Core commands: `/start`, `/help`, `/clear`.
-- [x] Ollama integration with timeout, retry, and user-facing error handling.
-- [x] Basic per-user in-memory conversation context.
-- [x] `/models` command for model listing and selection.
-- [x] Persist selected model per user in SQLite.
-- [x] `/currentmodel` command to display active model.
-- [ ] User whitelist and basic rate limiting.
-- [ ] Logging improvements and healthcheck endpoint/command.
-
-## Telegram API Choices (MVP)
-
-- Long polling (`run_polling`) for simpler deployment.
-- Command registration with `set_my_commands`.
-- `sendChatAction(typing)` before calling Ollama.
-- Global error handler via `Application.add_error_handler`.
-- Message splitting for Telegram's 4096-char limit.
-- `drop_pending_updates=True` on startup to avoid stale backlog.
-- `/models` lists available models and allows selection via `/models <name>`.
-- `/currentmodel` shows the active model for the current user.
+- [x] Core bot architecture and environment-based configuration.
+- [x] Docker-first deployment with Compose and GHCR publish workflow.
+- [x] Core conversation flow with contextual chat and error-safe Ollama calls.
+- [x] Base command set and UX (`/start`, `/help`, `/clear`, `/models`, `/currentmodel`).
+- [x] Unified bot UI (slash commands + persistent quick buttons + inline actions).
+- [x] Unified status messaging (`ℹ️ info`, `✅ success`, `⚠️ warning`, `❌ error`).
+- [x] Per-user model management with SQLite persistence.
+- [ ] Access control with user whitelist (`ALLOWED_USER_IDS`).
+- [ ] Basic per-user rate limiting.
+- [ ] Healthcheck command/endpoint and operational status checks.
+- [ ] Logging hardening for production observability.
 
 ## Configuration
 
