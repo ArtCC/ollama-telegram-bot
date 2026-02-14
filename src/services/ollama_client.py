@@ -83,6 +83,40 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
 
+    async def list_models(self) -> list[str]:
+        last_error: Exception | None = None
+        for attempt in range(self._retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.get(f"{self._base_url}/api/tags")
+                response.raise_for_status()
+                data = response.json()
+                models_raw = data.get("models", [])
+                names = [str(item.get("name", "")).strip() for item in models_raw]
+                models = [name for name in names if name]
+                return sorted(models)
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaTimeoutError("Ollama request timed out") from error
+            except httpx.RequestError as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaConnectionError("Could not reach Ollama") from error
+            except httpx.HTTPStatusError as error:
+                detail = error.response.text[:300]
+                raise OllamaError(
+                    f"Ollama returned HTTP {error.response.status_code}: {detail}"
+                ) from error
+
+        if last_error:
+            raise OllamaError("Unexpected Ollama failure") from last_error
+        raise OllamaError("Unexpected Ollama failure")
+
     @staticmethod
     def _compose_prompt(prompt: str, context_turns: list[ConversationTurn]) -> str:
         if not context_turns:

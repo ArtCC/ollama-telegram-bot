@@ -8,6 +8,7 @@ from src.bot.error_handler import on_error
 from src.bot.handlers import BotHandlers, register_handlers
 from src.config.settings import load_settings
 from src.core.context_store import InMemoryContextStore
+from src.core.model_preferences_store import ModelPreferencesStore
 from src.services.ollama_client import OllamaClient
 from src.utils.logging import configure_logging
 
@@ -23,6 +24,7 @@ def main() -> None:
     application = Application.builder().token(settings.telegram_bot_token).build()
 
     context_store = InMemoryContextStore(max_turns=settings.max_context_messages)
+    model_preferences_store = ModelPreferencesStore(settings.model_prefs_db_path)
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,
         timeout_seconds=settings.request_timeout_seconds,
@@ -31,6 +33,7 @@ def main() -> None:
     handlers = BotHandlers(
         ollama_client=ollama_client,
         context_store=context_store,
+        model_preferences_store=model_preferences_store,
         default_model=settings.ollama_default_model,
     )
 

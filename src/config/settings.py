@@ -9,6 +9,7 @@ class Settings:
     telegram_bot_token: str
     ollama_base_url: str
     ollama_default_model: str
+    model_prefs_db_path: str
     request_timeout_seconds: int
     max_context_messages: int
     log_level: str
@@ -40,6 +41,7 @@ def load_settings() -> Settings:
         telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
         ollama_base_url=_require_env("OLLAMA_BASE_URL").rstrip("/"),
         ollama_default_model=_require_env("OLLAMA_DEFAULT_MODEL"),
+        model_prefs_db_path=os.getenv("MODEL_PREFS_DB_PATH", "./data/bot.db").strip(),
         request_timeout_seconds=request_timeout_seconds,
         max_context_messages=max_context_messages,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),

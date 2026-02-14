@@ -59,7 +59,9 @@ Use this checklist to track Phase 1 progress.
 - [x] Core commands: `/start`, `/help`, `/clear`.
 - [x] Ollama integration with timeout, retry, and user-facing error handling.
 - [x] Basic per-user in-memory conversation context.
-- [ ] `/models` command for model listing and selection.
+- [x] `/models` command for model listing and selection.
+- [x] Persist selected model per user in SQLite.
+- [x] `/currentmodel` command to display active model.
 - [ ] User whitelist and basic rate limiting.
 - [ ] Logging improvements and healthcheck endpoint/command.
 
@@ -71,6 +73,8 @@ Use this checklist to track Phase 1 progress.
 - Global error handler via `Application.add_error_handler`.
 - Message splitting for Telegram's 4096-char limit.
 - `drop_pending_updates=True` on startup to avoid stale backlog.
+- `/models` lists available models and allows selection via `/models <name>`.
+- `/currentmodel` shows the active model for the current user.
 
 ## Configuration
 
@@ -88,6 +92,7 @@ services:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL}
+      MODEL_PREFS_DB_PATH: ${MODEL_PREFS_DB_PATH:-/data/bot.db}
       ALLOWED_USER_IDS: ${ALLOWED_USER_IDS}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-60}
@@ -100,6 +105,8 @@ See `.env.example` for the complete list and example values.
 - `TELEGRAM_BOT_TOKEN`
 - `OLLAMA_BASE_URL`
 - `OLLAMA_DEFAULT_MODEL`
+- `MODEL_PREFS_DB_PATH`
+- `BOT_DATA_DIR`
 - `REQUEST_TIMEOUT_SECONDS`
 - `MAX_CONTEXT_MESSAGES`
 - `LOG_LEVEL`

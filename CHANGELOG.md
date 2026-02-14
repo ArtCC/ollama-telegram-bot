@@ -16,5 +16,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Ollama client integration with timeout, retry, and categorized error handling.
 - User-facing error handling for Telegram interactions.
 - Message chunking utility for Telegram 4096 character limit.
+- `/models` command to list available Ollama models and select an active model per user.
+- `/currentmodel` command to show the active model for the current user.
+- Persist selected `/models` value per user in SQLite database.
 - Base developer tooling: Ruff, MyPy, and Pytest configuration.
 - Initial test suite for context store and Telegram message splitting.

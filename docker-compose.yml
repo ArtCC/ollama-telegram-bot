@@ -5,10 +5,13 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    volumes:
+      - ${BOT_DATA_DIR:-./data}:/data
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL}
+      MODEL_PREFS_DB_PATH: ${MODEL_PREFS_DB_PATH:-/data/bot.db}
       ALLOWED_USER_IDS: ${ALLOWED_USER_IDS}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-60}
