@@ -113,6 +113,84 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
 
+    async def chat(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        context_turns: list[ConversationTurn],
+        keep_alive: str,
+    ) -> OllamaResponse:
+        started_at = monotonic()
+        messages = self._compose_messages(prompt=prompt, context_turns=context_turns)
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": keep_alive,
+        }
+
+        last_error: Exception | None = None
+        for attempt in range(self._retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.post(f"{self._base_url}/api/chat", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                message = data.get("message") or {}
+                text = str(message.get("content", "")).strip()
+                if not text:
+                    raise OllamaError("Empty chat response from Ollama")
+
+                elapsed_ms = int((monotonic() - started_at) * 1000)
+                logger.info(
+                    "ollama_chat_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d keep_alive=%s",
+                    model,
+                    len(prompt),
+                    len(context_turns),
+                    elapsed_ms,
+                    keep_alive,
+                )
+                return OllamaResponse(text=text)
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < self._retries:
+                    logger.warning(
+                        "ollama_chat_timeout_retry model=%s attempt=%d/%d",
+                        model,
+                        attempt + 1,
+                        self._retries + 1,
+                    )
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaTimeoutError("Ollama chat request timed out") from error
+            except httpx.RequestError as error:
+                last_error = error
+                if attempt < self._retries:
+                    logger.warning(
+                        "ollama_chat_connection_retry model=%s attempt=%d/%d",
+                        model,
+                        attempt + 1,
+                        self._retries + 1,
+                    )
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaConnectionError("Could not reach Ollama") from error
+            except httpx.HTTPStatusError as error:
+                detail = error.response.text[:300]
+                logger.warning(
+                    "ollama_chat_http_error model=%s status=%d",
+                    model,
+                    error.response.status_code,
+                )
+                raise OllamaError(
+                    f"Ollama returned HTTP {error.response.status_code}: {detail}"
+                ) from error
+
+        if last_error:
+            raise OllamaError("Unexpected Ollama failure") from last_error
+        raise OllamaError("Unexpected Ollama failure")
+
     async def list_models(self) -> list[str]:
         started_at = monotonic()
         last_error: Exception | None = None
@@ -174,3 +252,14 @@ class OllamaClient:
         context_lines.append(f"User: {prompt}")
         context_lines.append("Assistant:")
         return "\n".join(context_lines)
+
+    @staticmethod
+    def _compose_messages(prompt: str, context_turns: list[ConversationTurn]) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        for turn in context_turns:
+            if turn.role not in {"system", "user", "assistant", "tool"}:
+                continue
+            messages.append({"role": turn.role, "content": turn.content})
+
+        messages.append({"role": "user", "content": prompt})
+        return messages

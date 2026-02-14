@@ -55,6 +55,8 @@ class BotHandlers:
         context_store: InMemoryContextStore,
         model_preferences_store: ModelPreferencesStore,
         default_model: str,
+        use_chat_api: bool,
+        keep_alive: str,
         allowed_user_ids: set[int] | None = None,
         rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
@@ -62,6 +64,8 @@ class BotHandlers:
         self._context_store = context_store
         self._model_preferences_store = model_preferences_store
         self._default_model = default_model
+        self._use_chat_api = use_chat_api
+        self._keep_alive = keep_alive
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
 
@@ -437,10 +441,11 @@ class BotHandlers:
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
         try:
-            ollama_response = await self._ollama_client.generate(
+            ollama_response = await self._generate_response(
+                user_id=user_id,
                 model=model,
                 prompt=user_text,
-                context_turns=turns,
+                turns=turns,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -477,6 +482,36 @@ class BotHandlers:
 
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+    async def _generate_response(
+        self,
+        *,
+        user_id: int,
+        model: str,
+        prompt: str,
+        turns: list,
+    ):
+        if self._use_chat_api:
+            try:
+                return await self._ollama_client.chat(
+                    model=model,
+                    prompt=prompt,
+                    context_turns=turns,
+                    keep_alive=self._keep_alive,
+                )
+            except OllamaError as error:
+                logger.warning(
+                    "ollama_chat_fallback_to_generate user_id=%s model=%s error=%s",
+                    user_id,
+                    model,
+                    error,
+                )
+
+        return await self._ollama_client.generate(
+            model=model,
+            prompt=prompt,
+            context_turns=turns,
+        )
 
     def _get_user_model(self, user_id: int) -> str:
         try:

@@ -63,3 +63,24 @@ def test_load_settings_parses_rate_limit_values(monkeypatch: pytest.MonkeyPatch)
 
     assert settings.rate_limit_max_messages == 5
     assert settings.rate_limit_window_seconds == 45
+
+
+def test_load_settings_chat_api_defaults() -> None:
+    settings = load_settings()
+
+    assert settings.ollama_use_chat_api is True
+    assert settings.ollama_keep_alive == "5m"
+
+
+def test_load_settings_rejects_invalid_chat_api_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_USE_CHAT_API", "maybe")
+
+    with pytest.raises(ValueError, match="OLLAMA_USE_CHAT_API"):
+        load_settings()
+
+
+def test_load_settings_rejects_empty_keep_alive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "   ")
+
+    with pytest.raises(ValueError, match="OLLAMA_KEEP_ALIVE"):
+        load_settings()

@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.2] - 2026-02-14
+
+### Added
+- Migrated primary inference flow to Ollama Chat API (`/api/chat`) with role-based message payloads.
+- Added automatic fallback to `/api/generate` when chat requests fail.
+- Added `OLLAMA_USE_CHAT_API` and `OLLAMA_KEEP_ALIVE` runtime configuration flags.
+- Updated deployment/docs configuration to expose Chat API migration settings.
+
 ## [0.0.1] - 2026-02-14
 
 ### Added

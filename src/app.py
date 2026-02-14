@@ -36,6 +36,8 @@ def main() -> None:
         context_store=context_store,
         model_preferences_store=model_preferences_store,
         default_model=settings.ollama_default_model,
+        use_chat_api=settings.ollama_use_chat_api,
+        keep_alive=settings.ollama_keep_alive,
         allowed_user_ids=set(settings.allowed_user_ids),
         rate_limiter=(
             SlidingWindowRateLimiter(
