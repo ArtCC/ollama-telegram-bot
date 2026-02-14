@@ -3,8 +3,8 @@ services:
     image: ${BOT_IMAGE}
     container_name: ${BOT_CONTAINER_NAME:-ollama-telegram-bot}
     restart: unless-stopped
-    env_file:
-      - .env
+    # env_file:
+    #   - .env
     volumes:
       - ${BOT_DATA_DIR:-./data}:/data
     environment:
@@ -16,4 +16,6 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-60}
       MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-12}
+      RATE_LIMIT_MAX_MESSAGES: ${RATE_LIMIT_MAX_MESSAGES:-8}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-30}
       TZ: ${TZ:-Europe/Madrid}

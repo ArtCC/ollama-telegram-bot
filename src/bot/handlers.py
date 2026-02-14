@@ -22,6 +22,7 @@ from telegram.ext import (
 
 from src.core.context_store import InMemoryContextStore
 from src.core.model_preferences_store import ModelPreferencesStore
+from src.core.rate_limiter import SlidingWindowRateLimiter
 from src.services.ollama_client import (
     OllamaClient,
     OllamaConnectionError,
@@ -53,11 +54,15 @@ class BotHandlers:
         context_store: InMemoryContextStore,
         model_preferences_store: ModelPreferencesStore,
         default_model: str,
+        allowed_user_ids: set[int] | None = None,
+        rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
         self._ollama_client = ollama_client
         self._context_store = context_store
         self._model_preferences_store = model_preferences_store
         self._default_model = default_model
+        self._allowed_user_ids = allowed_user_ids or set()
+        self._rate_limiter = rate_limiter
 
     async def set_commands(self, application: Application) -> None:
         await application.bot.set_my_commands(
@@ -71,6 +76,8 @@ class BotHandlers:
         )
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message:
             return
         await update.effective_message.reply_text(
@@ -81,6 +88,8 @@ class BotHandlers:
         )
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message:
             return
         await update.effective_message.reply_text(
@@ -94,6 +103,8 @@ class BotHandlers:
         )
 
     async def clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message or not update.effective_user:
             return
         await update.effective_message.reply_text(
@@ -103,6 +114,8 @@ class BotHandlers:
         )
 
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message or not update.effective_user:
             return
 
@@ -176,6 +189,8 @@ class BotHandlers:
         )
 
     async def clear_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         query = update.callback_query
         if not query or not update.effective_user:
             return
@@ -206,6 +221,8 @@ class BotHandlers:
     async def select_model_callback(
         self, update: Update, context: ContextTypes.DEFAULT_TYPE
     ) -> None:
+        if not await self._guard_access(update):
+            return
         query = update.callback_query
         if not query or not update.effective_user:
             return
@@ -292,6 +309,8 @@ class BotHandlers:
         )
 
     async def current_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message or not update.effective_user:
             return
 
@@ -316,6 +335,8 @@ class BotHandlers:
         )
 
     async def quick_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
         if not update.effective_message:
             return
 
@@ -334,6 +355,8 @@ class BotHandlers:
             return
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update, apply_rate_limit=True):
+            return
         if not update.effective_message or not update.effective_user:
             return
 
@@ -393,6 +416,39 @@ class BotHandlers:
         if not selected_model:
             return self._default_model
         return selected_model
+
+    async def _guard_access(self, update: Update, apply_rate_limit: bool = False) -> bool:
+        user = update.effective_user
+        if not user:
+            return False
+
+        if self._allowed_user_ids and user.id not in self._allowed_user_ids:
+            await self._deny_access(update)
+            return False
+
+        if apply_rate_limit and self._rate_limiter and not self._rate_limiter.allow(user.id):
+            target_message = update.effective_message or (
+                update.callback_query.message if update.callback_query else None
+            )
+            if target_message:
+                await target_message.reply_text(
+                    self._warning("Rate limit exceeded. Please wait a few seconds and try again."),
+                    reply_markup=self._main_keyboard(),
+                )
+            return False
+
+        return True
+
+    async def _deny_access(self, update: Update) -> None:
+        denied_text = self._error("You are not allowed to use this bot.")
+
+        query = update.callback_query
+        if query:
+            await query.answer("Access denied", show_alert=True)
+
+        target_message = update.effective_message or (query.message if query else None)
+        if target_message:
+            await target_message.reply_text(denied_text)
 
     @staticmethod
     def _status(icon: str, text: str) -> str:

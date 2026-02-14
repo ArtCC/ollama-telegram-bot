@@ -9,6 +9,7 @@ from src.bot.handlers import BotHandlers, register_handlers
 from src.config.settings import load_settings
 from src.core.context_store import InMemoryContextStore
 from src.core.model_preferences_store import ModelPreferencesStore
+from src.core.rate_limiter import SlidingWindowRateLimiter
 from src.services.ollama_client import OllamaClient
 from src.utils.logging import configure_logging
 
@@ -35,6 +36,15 @@ def main() -> None:
         context_store=context_store,
         model_preferences_store=model_preferences_store,
         default_model=settings.ollama_default_model,
+        allowed_user_ids=set(settings.allowed_user_ids),
+        rate_limiter=(
+            SlidingWindowRateLimiter(
+                max_requests=settings.rate_limit_max_messages,
+                window_seconds=settings.rate_limit_window_seconds,
+            )
+            if settings.rate_limit_max_messages > 0
+            else None
+        ),
     )
 
     register_handlers(application, handlers)

@@ -23,5 +23,8 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Inline model selection buttons in `/models` using callback actions.
 - Inline confirmation flow for `/clear` and quick model actions from `/currentmodel`.
 - Unified status message style with fixed iconography for info/success/warning/error.
+- Access control with `ALLOWED_USER_IDS` whitelist validation for commands, callbacks, and messages.
+- Sliding-window per-user rate limiting for chat messages using `RATE_LIMIT_MAX_MESSAGES` and `RATE_LIMIT_WINDOW_SECONDS`.
+- Enforced `ALLOWED_USER_IDS` as mandatory and non-empty during startup configuration validation.
 - Base developer tooling: Ruff, MyPy, and Pytest configuration.
 - Initial test suite for context store and Telegram message splitting.
