@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from time import monotonic
 
 from telegram import (
     BotCommand,
@@ -69,6 +70,7 @@ class BotHandlers:
             [
                 BotCommand(command="start", description="Start the bot"),
                 BotCommand(command="help", description="Show available commands"),
+                BotCommand(command="health", description="Run operational checks"),
                 BotCommand(command="clear", description="Clear conversation context"),
                 BotCommand(command="models", description="List or select model"),
                 BotCommand(command="currentmodel", description="Show your current model"),
@@ -80,6 +82,7 @@ class BotHandlers:
             return
         if not update.effective_message:
             return
+        self._log_user_event("command_start", update)
         await update.effective_message.reply_text(
             "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\n"
             "Use the buttons below or slash commands.",
@@ -92,21 +95,76 @@ class BotHandlers:
             return
         if not update.effective_message:
             return
+        self._log_user_event("command_help", update)
         await update.effective_message.reply_text(
             f"{ICON_INFO} Available commands:\n"
             "/start - Start the bot\n"
             "/help - Show this help\n"
+            "/health - Check runtime, database and Ollama status\n"
             "/clear - Clear your context\n"
             "/models - List models or select one with /models <name>\n"
             "/currentmodel - Show your active model",
             reply_markup=self._main_keyboard(),
         )
 
+    async def health(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        self._log_user_event("command_health", update)
+        started_at = monotonic()
+
+        db_ok = True
+        db_detail = "OK"
+        try:
+            self._model_preferences_store.healthcheck()
+        except Exception as error:
+            logger.exception("health_db_check_failed user_id=%s", update.effective_user.id)
+            db_ok = False
+            db_detail = str(error)
+
+        ollama_ok = True
+        ollama_detail = "OK"
+        ollama_model_count = 0
+        try:
+            models = await self._ollama_client.list_models()
+            ollama_model_count = len(models)
+            ollama_detail = f"OK ({ollama_model_count} models visible)"
+        except Exception as error:
+            logger.exception("health_ollama_check_failed user_id=%s", update.effective_user.id)
+            ollama_ok = False
+            ollama_detail = str(error)
+
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        overall_ok = db_ok and ollama_ok
+        overall_text = "OK" if overall_ok else "DEGRADED"
+
+        lines = [self._info(f"Healthcheck result: {overall_text}")]
+        lines.append(f"{ICON_SUCCESS if db_ok else ICON_ERROR} SQLite: {db_detail}")
+        lines.append(f"{ICON_SUCCESS if ollama_ok else ICON_ERROR} Ollama: {ollama_detail}")
+        lines.append(f"{ICON_INFO} Runtime: OK")
+        lines.append(f"{ICON_INFO} Latency: {elapsed_ms} ms")
+
+        logger.info(
+            "healthcheck_result user_id=%s overall_ok=%s db_ok=%s ollama_ok=%s ollama_models=%d elapsed_ms=%d",
+            update.effective_user.id,
+            overall_ok,
+            db_ok,
+            ollama_ok,
+            ollama_model_count,
+            elapsed_ms,
+        )
+
+        await update.effective_message.reply_text("\n".join(lines), reply_markup=self._main_keyboard())
+
     async def clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
         if not update.effective_message or not update.effective_user:
             return
+        self._log_user_event("command_clear", update)
         await update.effective_message.reply_text(
             f"{ICON_WARNING} <b>Clear context?</b>\nThis will remove your current chat memory.",
             parse_mode=ParseMode.HTML,
@@ -120,6 +178,7 @@ class BotHandlers:
             return
 
         user_id = update.effective_user.id
+        self._log_user_event("command_models", update)
         requested_model = " ".join(context.args).strip() if context.args else ""
 
         try:
@@ -314,6 +373,7 @@ class BotHandlers:
         if not update.effective_message or not update.effective_user:
             return
 
+        self._log_user_event("command_currentmodel", update)
         user_id = update.effective_user.id
         current_model = self._get_user_model(user_id)
         await update.effective_message.reply_text(
@@ -361,6 +421,7 @@ class BotHandlers:
             return
 
         user_text = (update.effective_message.text or "").strip()
+        self._log_user_event("message_received", update)
         if not user_text:
             await update.effective_message.reply_text(
                 self._warning("Please send a non-empty message."),
@@ -371,6 +432,7 @@ class BotHandlers:
         user_id = update.effective_user.id
         turns = self._context_store.get_turns(user_id)
         model = self._get_user_model(user_id)
+        started_at = monotonic()
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
@@ -403,6 +465,16 @@ class BotHandlers:
         self._context_store.append(user_id, role="user", content=user_text)
         self._context_store.append(user_id, role="assistant", content=ollama_response.text)
 
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "message_completed user_id=%s model=%s input_chars=%d output_chars=%d elapsed_ms=%d",
+            user_id,
+            model,
+            len(user_text),
+            len(ollama_response.text),
+            elapsed_ms,
+        )
+
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
@@ -423,10 +495,12 @@ class BotHandlers:
             return False
 
         if self._allowed_user_ids and user.id not in self._allowed_user_ids:
+            logger.warning("access_denied user_id=%s", user.id)
             await self._deny_access(update)
             return False
 
         if apply_rate_limit and self._rate_limiter and not self._rate_limiter.allow(user.id):
+            logger.warning("rate_limit_exceeded user_id=%s", user.id)
             target_message = update.effective_message or (
                 update.callback_query.message if update.callback_query else None
             )
@@ -449,6 +523,12 @@ class BotHandlers:
         target_message = update.effective_message or (query.message if query else None)
         if target_message:
             await target_message.reply_text(denied_text)
+
+    @staticmethod
+    def _log_user_event(event: str, update: Update) -> None:
+        user_id = update.effective_user.id if update.effective_user else "unknown"
+        chat_id = update.effective_chat.id if update.effective_chat else "unknown"
+        logger.info("%s user_id=%s chat_id=%s", event, user_id, chat_id)
 
     @staticmethod
     def _status(icon: str, text: str) -> str:
@@ -549,6 +629,7 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.post_init = handlers.set_commands
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("help", handlers.help))
+    application.add_handler(CommandHandler("health", handlers.health))
     application.add_handler(CommandHandler("clear", handlers.clear))
     application.add_handler(CommandHandler("models", handlers.models))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))

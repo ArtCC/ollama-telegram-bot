@@ -26,5 +26,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Access control with `ALLOWED_USER_IDS` whitelist validation for commands, callbacks, and messages.
 - Sliding-window per-user rate limiting for chat messages using `RATE_LIMIT_MAX_MESSAGES` and `RATE_LIMIT_WINDOW_SECONDS`.
 - Enforced `ALLOWED_USER_IDS` as mandatory and non-empty during startup configuration validation.
+- `/health` command with operational checks for bot runtime, SQLite connectivity, and Ollama availability.
+- Production-oriented logging hardening (UTC timestamps, stdout handler, warning capture, forced logger setup, and contextual event logs).
 - Base developer tooling: Ruff, MyPy, and Pytest configuration.
 - Initial test suite for context store and Telegram message splitting.

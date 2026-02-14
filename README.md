@@ -58,14 +58,14 @@ ollama-telegram-bot/
 - [x] Core bot architecture and environment-based configuration.
 - [x] Docker-first deployment with Compose and GHCR publish workflow.
 - [x] Core conversation flow with contextual chat and error-safe Ollama calls.
-- [x] Base command set and UX (`/start`, `/help`, `/clear`, `/models`, `/currentmodel`).
+- [x] Base command set and UX (`/start`, `/help`, `/health`, `/clear`, `/models`, `/currentmodel`).
 - [x] Unified bot UI (slash commands + persistent quick buttons + inline actions).
 - [x] Unified status messaging (`ℹ️ info`, `✅ success`, `⚠️ warning`, `❌ error`).
 - [x] Per-user model management with SQLite persistence.
 - [x] Access control with user whitelist (`ALLOWED_USER_IDS`).
 - [x] Basic per-user rate limiting.
-- [ ] Healthcheck command/endpoint and operational status checks.
-- [ ] Logging hardening for production observability.
+- [x] Healthcheck command and operational status checks.
+- [x] Logging hardening for production observability.
 
 ## Configuration
 

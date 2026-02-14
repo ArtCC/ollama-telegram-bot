@@ -49,3 +49,7 @@ class ModelPreferencesStore:
                 (user_id, model_name),
             )
             connection.commit()
+
+    def healthcheck(self) -> None:
+        with self._connect() as connection:
+            connection.execute("SELECT 1").fetchone()
