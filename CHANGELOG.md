@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.4] - 2026-02-16
+
+### Added
+- Added full German locale file `locales/de.json`.
+- Added full French locale file `locales/fr.json`.
+- Added full Italian locale file `locales/it.json`.
+- Added startup diagnostics logging for container bootstrap (i18n locales, storage, Ollama config and runtime limits).
+
+### Fixed
+- Included the `locales/` directory in Docker image build to prevent startup failures in containers.
+
+### Changed
+- Updated README locale documentation and project structure to include all available locales (`en`, `es`, `de`, `fr`, `it`).
+
 ## [0.0.3] - 2026-02-16
 
 ### Added

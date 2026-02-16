@@ -28,8 +28,11 @@ ollama-telegram-bot/
 │   └── workflows/
 │       └── docker-publish.yml
 ├── locales/
+│   ├── de.json
 │   ├── en.json
-│   └── es.json
+│   ├── es.json
+│   ├── fr.json
+│   └── it.json
 ├── src/
 │   ├── app.py
 │   ├── bot/
@@ -92,7 +95,7 @@ ollama-telegram-bot/
 - [x] Natural-language-first UX: no extra technical commands required for advanced behavior.
 - [x] Image input support (photo/image document + optional caption instruction) using the selected model.
 - [x] Localization support with user Telegram language resolution and English fallback.
-- [x] Locale files available for `en` and `es`.
+- [x] Locale files available for `en`, `es`, `de`, `fr`, and `it`.
 
 ## Configuration
 
@@ -147,7 +150,7 @@ See `.env.example` for the complete list and example values.
 
 `ALLOWED_USER_IDS` is required and must contain at least one numeric Telegram user ID.
 Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English (`en`).
-Current locale files: `locales/en.json` and `locales/es.json`.
+Current locale files: `locales/en.json`, `locales/es.json`, `locales/de.json`, `locales/fr.json`, and `locales/it.json`.
 
 ## Docker Compose (Fully Variable-Driven)
 

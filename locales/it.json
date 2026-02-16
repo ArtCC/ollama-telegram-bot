@@ -1,0 +1,82 @@
+{
+  "commands": {
+    "start": "Avvia il bot",
+    "help": "Mostra i comandi disponibili",
+    "health": "Esegui controlli operativi",
+    "clear": "Cancella il contesto della conversazione",
+    "models": "Elenca o seleziona modello",
+    "currentmodel": "Mostra il tuo modello attuale"
+  },
+  "ui": {
+    "buttons": {
+      "models": "🧠 Modelli",
+      "current_model": "📌 Modello attuale",
+      "clear": "🧹 Cancella contesto",
+      "help": "❓ Aiuto",
+      "open_models": "🧠 Apri modelli",
+      "use_default": "♻️ Usa predefinito",
+      "refresh": "🔄 Aggiorna",
+      "refresh_models": "Aggiorna modelli",
+      "confirm": "✅ Conferma",
+      "cancel": "❌ Annulla"
+    },
+    "input_placeholder": "Scrivi un messaggio o usa i pulsanti…"
+  },
+  "messages": {
+    "start_welcome": "✨ <b>Benvenuto!</b> Invia un messaggio e chiederò una risposta a Ollama.\nUsa i pulsanti qui sotto o i comandi slash.",
+    "help": "ℹ️ Comandi disponibili:\n/start - Avvia il bot\n/help - Mostra questo aiuto\n/health - Controlla runtime, database e stato di Ollama\n/clear - Cancella il tuo contesto\n/models - Elenca i modelli o selezionane uno con /models <name>\n/currentmodel - Mostra il tuo modello attivo\n\nPuoi inviare messaggi di testo o immagini (con istruzioni opzionali nella didascalia).",
+    "please_send_non_empty": "Per favore invia un messaggio non vuoto.",
+    "voice_disabled": "I messaggi vocali e audio sono disabilitati. Invia messaggi di testo o immagini.",
+    "clear_confirm": "<b>Cancellare il contesto?</b>\nQuesto rimuoverà la memoria attuale della chat.",
+    "clear_cancelled": "Cancellazione annullata.",
+    "clear_done": "Il contesto della conversazione è stato cancellato.",
+    "current_model": "Modello attuale: {model}",
+    "access_denied": "Non sei autorizzato a usare questo bot.",
+    "access_denied_alert": "Accesso negato",
+    "rate_limit_exceeded": "Limite di richieste superato. Attendi qualche secondo e riprova.",
+    "unexpected_error": "Si è verificato un errore imprevisto. Riprova tra qualche secondo."
+  },
+  "health": {
+    "result": "Risultato controllo salute: {status}",
+    "ok": "OK",
+    "degraded": "DEGRADATO",
+    "sqlite": "SQLite: {detail}",
+    "ollama": "Ollama: {detail}",
+    "ollama_ok_with_models": "OK ({count} modelli visibili)",
+    "runtime_ok": "Runtime: OK",
+    "latency": "Latenza: {ms} ms"
+  },
+  "models": {
+    "available_title": "Modelli disponibili:",
+    "current_marker": " (attuale)",
+    "select_with": "Selezionane uno con: /models <name>",
+    "tap_button": "Oppure tocca un pulsante qui sotto.",
+    "updated": "Modello aggiornato a: {model}",
+    "reset_default": "Modello reimpostato al predefinito: {model}",
+    "not_found": "Modello non trovato. Usa /models per vedere i nomi disponibili.",
+    "not_available_anymore": "Il modello non è più disponibile. Usa /models per aggiornare l’elenco.",
+    "no_models_available": "Al momento non ci sono modelli disponibili in Ollama."
+  },
+  "image": {
+    "default_prompt": "Descrivi l’immagine ed estrai qualsiasi testo visibile, se presente.",
+    "model_without_vision": "Il tuo modello attuale ({model}) non supporta le immagini. Usa /models per scegliere un modello con visione.",
+    "too_large": "L’immagine è troppo grande. La dimensione massima consentita è {max_size}.",
+    "invalid_file": "Per favore invia un file immagine valido.",
+    "processing_error": "Non sono riuscito a elaborare questa immagine con il modello attuale. Prova un altro modello in /models.",
+    "read_error": "Non sono riuscito a leggere questo file immagine. Invia nuovamente un’immagine JPG/PNG valida."
+  },
+  "errors": {
+    "ollama_timeout": "Ollama sta impiegando troppo tempo a rispondere. Riprova tra poco.",
+    "ollama_connection": "Non sono riuscito a connettermi a Ollama. Contatta l’amministratore del bot.",
+    "ollama_list_models": "Non sono riuscito a caricare i modelli da Ollama in questo momento. Riprova più tardi.",
+    "ollama_validate_model": "Non sono riuscito a validare il modello selezionato in questo momento. Riprova più tardi.",
+    "save_model_preference": "Non sono riuscito a salvare la tua preferenza di modello. Riprova più tardi.",
+    "save_default_model_preference": "Non sono riuscito a salvare la tua preferenza di modello predefinito. Riprova più tardi.",
+    "ollama_generic": "Ollama ha restituito un errore. Riprova tra qualche istante."
+  },
+  "agent": {
+    "planner_instruction": "Sei un assistente di pianificazione. Rispondi in linguaggio naturale con passaggi chiari e concreti, dai priorità a indicazioni pratiche ed evita JSON salvo richiesta esplicita dell’utente.",
+    "analyst_instruction": "Sei un assistente di analisi. Rispondi in linguaggio naturale in modo conciso con risultati chiave e conclusioni ad alta affidabilità, ed evita JSON salvo richiesta esplicita dell’utente.",
+    "chat_instruction": "Sei un assistente conversazionale. Rispondi in modo naturale, chiaro e utile. Non restituire JSON salvo richiesta esplicita dell’utente."
+  }
+}
