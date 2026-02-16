@@ -12,6 +12,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added configurable image-size protection (`IMAGE_MAX_BYTES`) with friendly feedback when files exceed the limit.
 - Added separate user feedback for unreadable/corrupt image files versus model-processing failures.
 - Added i18n foundation with `locales/en.json`, user-language resolution from Telegram, and fallback to English for unsupported locales.
+- Added full Spanish (Spain) locale file `locales/es.json` with translated user-facing messages, commands, buttons, and prompts.
+- Added locale-aware command registration and keyboard labels per user locale.
+- Added `BOT_DEFAULT_LOCALE` runtime configuration and synchronized it across `.env.example`, `docker-compose.yml`, and `README.md`.
 - Enforced no-voice interaction mode at runtime: voice, audio, and video-note messages are blocked with a user-facing guidance message.
 - Updated documentation to reflect text+image behavior and disabled voice/audio inputs.
 

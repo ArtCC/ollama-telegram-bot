@@ -27,6 +27,9 @@ ollama-telegram-bot/
 ├── .github/
 │   └── workflows/
 │       └── docker-publish.yml
+├── locales/
+│   ├── en.json
+│   └── es.json
 ├── src/
 │   ├── app.py
 │   ├── bot/
@@ -38,6 +41,9 @@ ollama-telegram-bot/
 │   │   ├── context_store.py
 │   │   ├── model_preferences_store.py
 │   │   └── rate_limiter.py
+│   ├── i18n/
+│   │   ├── __init__.py
+│   │   └── service.py
 │   ├── services/
 │   │   └── ollama_client.py
 │   └── utils/
@@ -46,6 +52,7 @@ ollama-telegram-bot/
 ├── tests/
 │   ├── test_context_store.py
 │   ├── test_context_store_sqlite.py
+│   ├── test_i18n_service.py
 │   ├── test_model_preferences_store.py
 │   ├── test_rate_limiter.py
 │   ├── test_settings.py
@@ -84,6 +91,8 @@ ollama-telegram-bot/
 - [x] Persistent SQLite conversation context across restarts.
 - [x] Natural-language-first UX: no extra technical commands required for advanced behavior.
 - [x] Image input support (photo/image document + optional caption instruction) using the selected model.
+- [x] Localization support with user Telegram language resolution and English fallback.
+- [x] Locale files available for `en` and `es`.
 
 ## Configuration
 
@@ -137,7 +146,8 @@ See `.env.example` for the complete list and example values.
 - `TZ`: Timezone in IANA format (for example `Europe/Madrid`).
 
 `ALLOWED_USER_IDS` is required and must contain at least one numeric Telegram user ID.
-Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English.
+Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English (`en`).
+Current locale files: `locales/en.json` and `locales/es.json`.
 
 ## Docker Compose (Fully Variable-Driven)
 
@@ -164,10 +174,10 @@ docker compose up -d
 ## Local Development
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .[dev]
-python -m src.app
+python3 -m src.app
 ```
 
 ## Lint, Type Check, Tests
@@ -176,7 +186,7 @@ python -m src.app
 ruff check .
 ruff format .
 mypy src
-pytest -q
+python3 -m pytest -q
 ```
 
 ## GHCR Publish
