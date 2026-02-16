@@ -15,6 +15,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added full Spanish (Spain) locale file `locales/es.json` with translated user-facing messages, commands, buttons, and prompts.
 - Added locale-aware command registration and keyboard labels per user locale.
 - Added `BOT_DEFAULT_LOCALE` runtime configuration and synchronized it across `.env.example`, `docker-compose.yml`, and `README.md`.
+- Added startup diagnostic logs for container troubleshooting (version, i18n locales, storage path, Ollama config, runtime limits, and rate-limit status).
 - Enforced no-voice interaction mode at runtime: voice, audio, and video-note messages are blocked with a user-facing guidance message.
 - Updated documentation to reflect text+image behavior and disabled voice/audio inputs.
 

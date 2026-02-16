@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from telegram.ext import Application
@@ -22,13 +23,50 @@ def main() -> None:
     settings = load_settings()
     configure_logging(settings.log_level)
 
-    logger.info("Starting ollama-telegram-bot")
+    try:
+        app_version = version("ollama-telegram-bot")
+    except PackageNotFoundError:
+        app_version = "unknown"
+
+    logger.info("Starting ollama-telegram-bot version=%s", app_version)
 
     application = Application.builder().token(settings.telegram_bot_token).build()
 
     locales_dir = Path(__file__).resolve().parent.parent / "locales"
     i18n = I18nService(locales_dir=locales_dir, default_locale=settings.bot_default_locale)
     i18n.validate_required_keys(BotHandlers.required_i18n_keys())
+
+    logger.info(
+        "startup_i18n default_locale=%s available_locales=%s locales_dir=%s",
+        i18n.default_locale,
+        ",".join(i18n.available_locales),
+        locales_dir,
+    )
+
+    db_path = Path(settings.model_prefs_db_path)
+    db_parent = db_path.parent
+    logger.info(
+        "startup_storage db_path=%s db_parent=%s db_parent_exists=%s",
+        db_path,
+        db_parent,
+        db_parent.exists(),
+    )
+
+    logger.info(
+        "startup_ollama base_url=%s default_model=%s use_chat_api=%s keep_alive=%s timeout_s=%d",
+        settings.ollama_base_url,
+        settings.ollama_default_model,
+        settings.ollama_use_chat_api,
+        settings.ollama_keep_alive,
+        settings.request_timeout_seconds,
+    )
+
+    logger.info(
+        "startup_runtime max_context_messages=%d image_max_bytes=%d allowed_users=%d",
+        settings.max_context_messages,
+        settings.image_max_bytes,
+        len(settings.allowed_user_ids),
+    )
 
     context_store = SQLiteContextStore(
         db_path=settings.model_prefs_db_path,
@@ -62,6 +100,15 @@ def main() -> None:
 
     register_handlers(application, handlers)
     application.add_error_handler(build_error_handler(i18n))
+
+    logger.info(
+        "startup_rate_limit enabled=%s max_messages=%d window_seconds=%d",
+        settings.rate_limit_max_messages > 0,
+        settings.rate_limit_max_messages,
+        settings.rate_limit_window_seconds,
+    )
+
+    logger.info("startup_ready entering_polling_loop")
 
     application.run_polling(
         allowed_updates=["message", "callback_query"],
