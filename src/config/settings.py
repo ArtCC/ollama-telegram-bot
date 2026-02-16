@@ -17,6 +17,7 @@ class Settings:
     max_context_messages: int
     rate_limit_max_messages: int
     rate_limit_window_seconds: int
+    image_max_bytes: int
     log_level: str
 
 
@@ -62,6 +63,7 @@ def load_settings() -> Settings:
     max_context_raw = os.getenv("MAX_CONTEXT_MESSAGES", "12").strip()
     rate_limit_max_raw = os.getenv("RATE_LIMIT_MAX_MESSAGES", "0").strip()
     rate_limit_window_raw = os.getenv("RATE_LIMIT_WINDOW_SECONDS", "30").strip()
+    image_max_bytes_raw = os.getenv("IMAGE_MAX_BYTES", "5242880").strip()
     use_chat_api_raw = os.getenv("OLLAMA_USE_CHAT_API", "true")
     ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m").strip()
 
@@ -70,10 +72,11 @@ def load_settings() -> Settings:
         max_context_messages = int(max_context_raw)
         rate_limit_max_messages = int(rate_limit_max_raw)
         rate_limit_window_seconds = int(rate_limit_window_raw)
+        image_max_bytes = int(image_max_bytes_raw)
         ollama_use_chat_api = _parse_bool(use_chat_api_raw)
     except ValueError as error:
         raise ValueError(
-            "REQUEST_TIMEOUT_SECONDS, MAX_CONTEXT_MESSAGES, RATE_LIMIT_MAX_MESSAGES and RATE_LIMIT_WINDOW_SECONDS must be integers, and OLLAMA_USE_CHAT_API must be a boolean"
+            "REQUEST_TIMEOUT_SECONDS, MAX_CONTEXT_MESSAGES, RATE_LIMIT_MAX_MESSAGES, RATE_LIMIT_WINDOW_SECONDS and IMAGE_MAX_BYTES must be integers, and OLLAMA_USE_CHAT_API must be a boolean"
         ) from error
 
     if request_timeout_seconds < 5:
@@ -84,6 +87,8 @@ def load_settings() -> Settings:
         raise ValueError("RATE_LIMIT_MAX_MESSAGES must be >= 0")
     if rate_limit_window_seconds < 1:
         raise ValueError("RATE_LIMIT_WINDOW_SECONDS must be >= 1")
+    if image_max_bytes < 1024:
+        raise ValueError("IMAGE_MAX_BYTES must be >= 1024")
     if not ollama_keep_alive:
         raise ValueError("OLLAMA_KEEP_ALIVE cannot be empty")
 
@@ -101,5 +106,6 @@ def load_settings() -> Settings:
         max_context_messages=max_context_messages,
         rate_limit_max_messages=rate_limit_max_messages,
         rate_limit_window_seconds=rate_limit_window_seconds,
+        image_max_bytes=image_max_bytes,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )

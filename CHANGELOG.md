@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.3] - 2026-02-16
+
+### Added
+- Added image understanding support for photo/image-document messages using the user-selected model and optional caption instructions.
+- Added vision-capability guard for selected models with user-friendly fallback guidance when the model cannot process images.
+- Added configurable image-size protection (`IMAGE_MAX_BYTES`) with friendly feedback when files exceed the limit.
+- Added separate user feedback for unreadable/corrupt image files versus model-processing failures.
+- Enforced no-voice interaction mode at runtime: voice, audio, and video-note messages are blocked with a user-facing guidance message.
+- Updated documentation to reflect text+image behavior and disabled voice/audio inputs.
+
 ## [0.0.2] - 2026-02-14
 
 ### Added

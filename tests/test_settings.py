@@ -84,3 +84,16 @@ def test_load_settings_rejects_empty_keep_alive(monkeypatch: pytest.MonkeyPatch)
 
     with pytest.raises(ValueError, match="OLLAMA_KEEP_ALIVE"):
         load_settings()
+
+
+def test_load_settings_image_max_bytes_default() -> None:
+    settings = load_settings()
+
+    assert settings.image_max_bytes == 5 * 1024 * 1024
+
+
+def test_load_settings_rejects_too_small_image_max_bytes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IMAGE_MAX_BYTES", "100")
+
+    with pytest.raises(ValueError, match="IMAGE_MAX_BYTES"):
+        load_settings()

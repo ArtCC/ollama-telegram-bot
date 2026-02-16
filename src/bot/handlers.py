@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import logging
 from time import monotonic
 
@@ -57,6 +58,7 @@ class BotHandlers:
         default_model: str,
         use_chat_api: bool,
         keep_alive: str,
+        image_max_bytes: int,
         allowed_user_ids: set[int] | None = None,
         rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
@@ -66,6 +68,7 @@ class BotHandlers:
         self._default_model = default_model
         self._use_chat_api = use_chat_api
         self._keep_alive = keep_alive
+        self._image_max_bytes = image_max_bytes
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
 
@@ -107,7 +110,8 @@ class BotHandlers:
             "/health - Check runtime, database and Ollama status\n"
             "/clear - Clear your context\n"
             "/models - List models or select one with /models <name>\n"
-            "/currentmodel - Show your active model",
+            "/currentmodel - Show your active model\n\n"
+            "You can send text messages or images (with optional caption instructions).",
             reply_markup=self._main_keyboard(),
         )
 
@@ -487,6 +491,152 @@ class BotHandlers:
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
+    async def on_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update, apply_rate_limit=True):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        message = update.effective_message
+        user_id = update.effective_user.id
+        caption = (message.caption or "").strip()
+        user_prompt = caption or "Describe the image and extract any visible text if present."
+        model = self._get_user_model(user_id)
+        turns = self._context_store.get_turns(user_id)
+        agent_name = self._select_agent(user_prompt)
+        system_instruction = self._agent_system_instruction(agent_name)
+        turns_for_model: list[ConversationTurn] = [
+            ConversationTurn(role="system", content=system_instruction),
+            *turns,
+        ]
+        image_bytes_size = 0
+
+        try:
+            vision_support = await self._ollama_client.supports_vision(model)
+            if vision_support is False:
+                await message.reply_text(
+                    self._warning(
+                        f"Your current model ({model}) does not support images. Use /models to choose a vision model."
+                    ),
+                    reply_markup=self._main_keyboard(),
+                )
+                return
+
+            photo_bytes: bytes | None = None
+            if message.photo:
+                image_bytes_size = int(message.photo[-1].file_size or 0)
+                if image_bytes_size > self._image_max_bytes:
+                    await message.reply_text(
+                        self._warning(
+                            "Image is too large. Maximum allowed size is "
+                            f"{self._format_size(self._image_max_bytes)}."
+                        ),
+                        reply_markup=self._main_keyboard(),
+                    )
+                    return
+                file = await message.photo[-1].get_file()
+                photo_bytes = bytes(await file.download_as_bytearray())
+            elif message.document and (message.document.mime_type or "").startswith("image/"):
+                image_bytes_size = int(message.document.file_size or 0)
+                if image_bytes_size > self._image_max_bytes:
+                    await message.reply_text(
+                        self._warning(
+                            "Image is too large. Maximum allowed size is "
+                            f"{self._format_size(self._image_max_bytes)}."
+                        ),
+                        reply_markup=self._main_keyboard(),
+                    )
+                    return
+                file = await message.document.get_file()
+                photo_bytes = bytes(await file.download_as_bytearray())
+
+            if not photo_bytes:
+                await message.reply_text(
+                    self._warning("Please send a valid image file."),
+                    reply_markup=self._main_keyboard(),
+                )
+                return
+
+            image_base64 = base64.b64encode(photo_bytes).decode("utf-8")
+            if not image_bytes_size:
+                image_bytes_size = len(photo_bytes)
+            if image_bytes_size > self._image_max_bytes:
+                await message.reply_text(
+                    self._warning(
+                        "Image is too large. Maximum allowed size is "
+                        f"{self._format_size(self._image_max_bytes)}."
+                    ),
+                    reply_markup=self._main_keyboard(),
+                )
+                return
+
+            started_at = monotonic()
+            await update.effective_chat.send_action(action=ChatAction.TYPING)
+
+            ollama_response = await self._ollama_client.chat_with_image(
+                model=model,
+                prompt=user_prompt,
+                image_base64=image_base64,
+                context_turns=turns_for_model,
+                keep_alive=self._keep_alive,
+            )
+        except OllamaTimeoutError:
+            await message.reply_text(
+                self._warning("Ollama is taking too long to respond. Please try again shortly."),
+                reply_markup=self._main_keyboard(),
+            )
+            return
+        except OllamaConnectionError:
+            await message.reply_text(
+                self._error("I could not connect to Ollama. Please contact the bot administrator."),
+                reply_markup=self._main_keyboard(),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama image error: %s", error)
+            await message.reply_text(
+                self._error("I could not process this image with the current model. Try another model in /models."),
+                reply_markup=self._main_keyboard(),
+            )
+            return
+        except Exception as error:
+            logger.warning("image_read_failed user_id=%s error=%s", user_id, error)
+            await message.reply_text(
+                self._warning(
+                    "I could not read this image file. Please resend it as a valid JPG/PNG image."
+                ),
+                reply_markup=self._main_keyboard(),
+            )
+            return
+
+        self._context_store.append(user_id, role="user", content=f"[Image] {user_prompt}")
+        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "image_completed user_id=%s model=%s agent=%s prompt_chars=%d output_chars=%d elapsed_ms=%d",
+            user_id,
+            model,
+            agent_name,
+            len(user_prompt),
+            len(ollama_response.text),
+            elapsed_ms,
+        )
+
+        for chunk in split_message(ollama_response.text):
+            await message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+    async def on_voice_or_audio(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message:
+            return
+
+        await update.effective_message.reply_text(
+            self._warning("Voice and audio messages are disabled. Please send text or image messages."),
+            reply_markup=self._main_keyboard(),
+        )
+
     async def _generate_response(
         self,
         *,
@@ -640,6 +790,11 @@ class BotHandlers:
         return BotHandlers._status(ICON_ERROR, text)
 
     @staticmethod
+    def _format_size(num_bytes: int) -> str:
+        mib = num_bytes / (1024 * 1024)
+        return f"{mib:.1f} MB"
+
+    @staticmethod
     def _models_inline_keyboard(models: list[str], current_model: str) -> InlineKeyboardMarkup:
         rows: list[list[InlineKeyboardButton]] = []
         row: list[InlineKeyboardButton] = []
@@ -731,5 +886,11 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
             ),
             handlers.quick_actions,
         )
+    )
+    application.add_handler(
+        MessageHandler(filters.VOICE | filters.AUDIO | filters.VIDEO_NOTE, handlers.on_voice_or_audio)
+    )
+    application.add_handler(
+        MessageHandler(filters.PHOTO | filters.Document.IMAGE, handlers.on_image)
     )
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_text))

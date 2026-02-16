@@ -18,6 +18,7 @@ Open-source Telegram bot to chat with Ollama models running on your server.
 - Ollama integration with timeout, retries, and categorized failures.
 - Docker-first deployment with environment-driven configuration.
 - CI workflow for publishing container images to GHCR.
+- Text + image interaction mode: voice/audio messages are intentionally disabled.
 
 ## Project Structure
 
@@ -82,6 +83,7 @@ ollama-telegram-bot/
 - [x] Internal agent routing (planner/analyzer/chat) with natural-language responses only.
 - [x] Persistent SQLite conversation context across restarts.
 - [x] Natural-language-first UX: no extra technical commands required for advanced behavior.
+- [x] Image input support (photo/image document + optional caption instruction) using the selected model.
 
 ## Configuration
 
@@ -108,6 +110,7 @@ services:
       MAX_CONTEXT_MESSAGES: ${MAX_CONTEXT_MESSAGES:-12}
       RATE_LIMIT_MAX_MESSAGES: ${RATE_LIMIT_MAX_MESSAGES:-8}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-30}
+      IMAGE_MAX_BYTES: ${IMAGE_MAX_BYTES:-5242880}
       TZ: ${TZ:-Europe/Madrid}
 ```
 
@@ -128,6 +131,7 @@ See `.env.example` for the complete list and example values.
 - `MAX_CONTEXT_MESSAGES`: Number of recent turns kept in memory per user.
 - `RATE_LIMIT_MAX_MESSAGES`: Max user messages allowed inside the rate-limit window.
 - `RATE_LIMIT_WINDOW_SECONDS`: Sliding window size (seconds) for rate limiting.
+- `IMAGE_MAX_BYTES`: Maximum accepted image size in bytes for image analysis requests.
 - `TZ`: Timezone in IANA format (for example `Europe/Madrid`).
 
 `ALLOWED_USER_IDS` is required and must contain at least one numeric Telegram user ID.

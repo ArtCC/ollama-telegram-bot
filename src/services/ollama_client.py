@@ -40,6 +40,7 @@ class OllamaClient:
         self._base_url = base_url
         self._timeout = timeout_seconds
         self._retries = retries
+        self._vision_capability_cache: dict[str, bool] = {}
 
     async def generate(
         self,
@@ -247,6 +248,91 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
 
+    async def supports_vision(self, model: str) -> bool | None:
+        if model in self._vision_capability_cache:
+            return self._vision_capability_cache[model]
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/show",
+                    json={"model": model},
+                )
+            response.raise_for_status()
+            data = response.json()
+            capabilities = data.get("capabilities", [])
+            supports_vision = isinstance(capabilities, list) and "vision" in capabilities
+            self._vision_capability_cache[model] = supports_vision
+            return supports_vision
+        except Exception as error:
+            logger.warning("ollama_show_capabilities_failed model=%s error=%s", model, error)
+            return None
+
+    async def chat_with_image(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        image_base64: str,
+        context_turns: list[ConversationTurn],
+        keep_alive: str,
+    ) -> OllamaResponse:
+        started_at = monotonic()
+        messages = self._compose_messages_with_image(
+            prompt=prompt,
+            image_base64=image_base64,
+            context_turns=context_turns,
+        )
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": False,
+            "keep_alive": keep_alive,
+        }
+
+        last_error: Exception | None = None
+        for attempt in range(self._retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.post(f"{self._base_url}/api/chat", json=payload)
+                response.raise_for_status()
+                data = response.json()
+                message = data.get("message") or {}
+                text = str(message.get("content", "")).strip()
+                if not text:
+                    raise OllamaError("Empty image chat response from Ollama")
+
+                elapsed_ms = int((monotonic() - started_at) * 1000)
+                logger.info(
+                    "ollama_chat_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d",
+                    model,
+                    len(prompt),
+                    len(context_turns),
+                    elapsed_ms,
+                )
+                return OllamaResponse(text=text)
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaTimeoutError("Ollama image chat request timed out") from error
+            except httpx.RequestError as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaConnectionError("Could not reach Ollama") from error
+            except httpx.HTTPStatusError as error:
+                detail = error.response.text[:300]
+                raise OllamaError(
+                    f"Ollama returned HTTP {error.response.status_code}: {detail}"
+                ) from error
+
+        if last_error:
+            raise OllamaError("Unexpected Ollama failure") from last_error
+        raise OllamaError("Unexpected Ollama failure")
+
     @staticmethod
     def _compose_prompt(prompt: str, context_turns: list[ConversationTurn]) -> str:
         if not context_turns:
@@ -277,4 +363,25 @@ class OllamaClient:
             messages.append({"role": turn.role, "content": turn.content})
 
         messages.append({"role": "user", "content": prompt})
+        return messages
+
+    @staticmethod
+    def _compose_messages_with_image(
+        prompt: str,
+        image_base64: str,
+        context_turns: list[ConversationTurn],
+    ) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
+        for turn in context_turns:
+            if turn.role not in {"system", "user", "assistant", "tool"}:
+                continue
+            messages.append({"role": turn.role, "content": turn.content})
+
+        messages.append(
+            {
+                "role": "user",
+                "content": prompt,
+                "images": [image_base64],
+            }
+        )
         return messages
