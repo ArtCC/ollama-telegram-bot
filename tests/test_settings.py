@@ -97,3 +97,16 @@ def test_load_settings_rejects_too_small_image_max_bytes(monkeypatch: pytest.Mon
 
     with pytest.raises(ValueError, match="IMAGE_MAX_BYTES"):
         load_settings()
+
+
+def test_load_settings_default_locale_default_value() -> None:
+    settings = load_settings()
+
+    assert settings.bot_default_locale == "en"
+
+
+def test_load_settings_rejects_empty_default_locale(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BOT_DEFAULT_LOCALE", "   ")
+
+    with pytest.raises(ValueError, match="BOT_DEFAULT_LOCALE"):
+        load_settings()

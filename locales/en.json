@@ -1,0 +1,82 @@
+{
+  "commands": {
+    "start": "Start the bot",
+    "help": "Show available commands",
+    "health": "Run operational checks",
+    "clear": "Clear conversation context",
+    "models": "List or select model",
+    "currentmodel": "Show your current model"
+  },
+  "ui": {
+    "buttons": {
+      "models": "🧠 Models",
+      "current_model": "📌 Current Model",
+      "clear": "🧹 Clear Context",
+      "help": "❓ Help",
+      "open_models": "🧠 Open Models",
+      "use_default": "♻️ Use Default",
+      "refresh": "🔄 Refresh",
+      "refresh_models": "Refresh models",
+      "confirm": "✅ Confirm",
+      "cancel": "❌ Cancel"
+    },
+    "input_placeholder": "Write a message or use buttons…"
+  },
+  "messages": {
+    "start_welcome": "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\nUse the buttons below or slash commands.",
+    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List models or select one with /models <name>\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "please_send_non_empty": "Please send a non-empty message.",
+    "voice_disabled": "Voice and audio messages are disabled. Please send text or image messages.",
+    "clear_confirm": "<b>Clear context?</b>\nThis will remove your current chat memory.",
+    "clear_cancelled": "Clear cancelled.",
+    "clear_done": "Your conversation context has been cleared.",
+    "current_model": "Current model: {model}",
+    "access_denied": "You are not allowed to use this bot.",
+    "access_denied_alert": "Access denied",
+    "rate_limit_exceeded": "Rate limit exceeded. Please wait a few seconds and try again.",
+    "unexpected_error": "An unexpected error occurred. Please try again in a few seconds."
+  },
+  "health": {
+    "result": "Healthcheck result: {status}",
+    "ok": "OK",
+    "degraded": "DEGRADED",
+    "sqlite": "SQLite: {detail}",
+    "ollama": "Ollama: {detail}",
+    "ollama_ok_with_models": "OK ({count} models visible)",
+    "runtime_ok": "Runtime: OK",
+    "latency": "Latency: {ms} ms"
+  },
+  "models": {
+    "available_title": "Available models:",
+    "current_marker": " (current)",
+    "select_with": "Select one with: /models <name>",
+    "tap_button": "Or tap a button below.",
+    "updated": "Model updated to: {model}",
+    "reset_default": "Model reset to default: {model}",
+    "not_found": "Model not found. Use /models to see available names.",
+    "not_available_anymore": "Model is no longer available. Use /models to refresh the list.",
+    "no_models_available": "No models are currently available in Ollama."
+  },
+  "image": {
+    "default_prompt": "Describe the image and extract any visible text if present.",
+    "model_without_vision": "Your current model ({model}) does not support images. Use /models to choose a vision model.",
+    "too_large": "Image is too large. Maximum allowed size is {max_size}.",
+    "invalid_file": "Please send a valid image file.",
+    "processing_error": "I could not process this image with the current model. Try another model in /models.",
+    "read_error": "I could not read this image file. Please resend it as a valid JPG/PNG image."
+  },
+  "errors": {
+    "ollama_timeout": "Ollama is taking too long to respond. Please try again shortly.",
+    "ollama_connection": "I could not connect to Ollama. Please contact the bot administrator.",
+    "ollama_list_models": "I could not load models from Ollama right now. Please try again later.",
+    "ollama_validate_model": "I could not validate the selected model right now. Please try again later.",
+    "save_model_preference": "I could not save your model preference. Please try again later.",
+    "save_default_model_preference": "I could not save your default model preference. Please try again later.",
+    "ollama_generic": "Ollama returned an error. Please try again in a few moments."
+  },
+  "agent": {
+    "planner_instruction": "You are a planning assistant. Reply in natural language with clear actionable steps, prioritize practical guidance, and avoid JSON unless the user explicitly requests JSON.",
+    "analyst_instruction": "You are an analysis assistant. Reply in concise natural language with key findings, high-confidence conclusions, and avoid JSON unless the user explicitly requests JSON.",
+    "chat_instruction": "You are a conversational assistant. Reply naturally, clearly, and helpfully. Do not output JSON unless the user explicitly asks for JSON."
+  }
+}

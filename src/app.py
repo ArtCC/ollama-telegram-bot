@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 from telegram.ext import Application
 
-from src.bot.error_handler import on_error
+from src.bot.error_handler import build_error_handler
 from src.bot.handlers import BotHandlers, register_handlers
 from src.config.settings import load_settings
 from src.core.context_store import SQLiteContextStore
 from src.core.model_preferences_store import ModelPreferencesStore
 from src.core.rate_limiter import SlidingWindowRateLimiter
+from src.i18n import I18nService
 from src.services.ollama_client import OllamaClient
 from src.utils.logging import configure_logging
 
@@ -23,6 +25,10 @@ def main() -> None:
     logger.info("Starting ollama-telegram-bot")
 
     application = Application.builder().token(settings.telegram_bot_token).build()
+
+    locales_dir = Path(__file__).resolve().parent.parent / "locales"
+    i18n = I18nService(locales_dir=locales_dir, default_locale=settings.bot_default_locale)
+    i18n.validate_required_keys(BotHandlers.required_i18n_keys())
 
     context_store = SQLiteContextStore(
         db_path=settings.model_prefs_db_path,
@@ -42,6 +48,7 @@ def main() -> None:
         use_chat_api=settings.ollama_use_chat_api,
         keep_alive=settings.ollama_keep_alive,
         image_max_bytes=settings.image_max_bytes,
+        i18n=i18n,
         allowed_user_ids=set(settings.allowed_user_ids),
         rate_limiter=(
             SlidingWindowRateLimiter(
@@ -54,7 +61,7 @@ def main() -> None:
     )
 
     register_handlers(application, handlers)
-    application.add_error_handler(on_error)
+    application.add_error_handler(build_error_handler(i18n))
 
     application.run_polling(
         allowed_updates=["message", "callback_query"],

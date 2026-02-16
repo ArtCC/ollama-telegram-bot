@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import re
 from time import monotonic
 
 from telegram import (
@@ -25,6 +26,7 @@ from telegram.ext import (
 from src.core.context_store import ContextStore, ConversationTurn
 from src.core.model_preferences_store import ModelPreferencesStore
 from src.core.rate_limiter import SlidingWindowRateLimiter
+from src.i18n import I18nService
 from src.services.ollama_client import (
     OllamaClient,
     OllamaConnectionError,
@@ -35,10 +37,6 @@ from src.utils.telegram import split_message
 
 logger = logging.getLogger(__name__)
 
-BUTTON_MODELS = "🧠 Models"
-BUTTON_CURRENT_MODEL = "📌 Current Model"
-BUTTON_CLEAR = "🧹 Clear Context"
-BUTTON_HELP = "❓ Help"
 MODEL_CALLBACK_PREFIX = "model:"
 CLEAR_CALLBACK_PREFIX = "clear:"
 MODEL_REFRESH_ACTION = "__refresh__"
@@ -59,6 +57,7 @@ class BotHandlers:
         use_chat_api: bool,
         keep_alive: str,
         image_max_bytes: int,
+        i18n: I18nService,
         allowed_user_ids: set[int] | None = None,
         rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
@@ -69,32 +68,107 @@ class BotHandlers:
         self._use_chat_api = use_chat_api
         self._keep_alive = keep_alive
         self._image_max_bytes = image_max_bytes
+        self._i18n = i18n
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
+        self._quick_action_map = self._build_quick_action_map()
+
+    @staticmethod
+    def required_i18n_keys() -> tuple[str, ...]:
+        return (
+            "commands.start",
+            "commands.help",
+            "commands.health",
+            "commands.clear",
+            "commands.models",
+            "commands.currentmodel",
+            "ui.buttons.models",
+            "ui.buttons.current_model",
+            "ui.buttons.clear",
+            "ui.buttons.help",
+            "ui.buttons.open_models",
+            "ui.buttons.use_default",
+            "ui.buttons.refresh",
+            "ui.buttons.refresh_models",
+            "ui.buttons.confirm",
+            "ui.buttons.cancel",
+            "ui.input_placeholder",
+            "messages.start_welcome",
+            "messages.help",
+            "messages.please_send_non_empty",
+            "messages.voice_disabled",
+            "messages.clear_confirm",
+            "messages.clear_cancelled",
+            "messages.clear_done",
+            "messages.current_model",
+            "messages.access_denied",
+            "messages.access_denied_alert",
+            "messages.rate_limit_exceeded",
+            "messages.unexpected_error",
+            "health.result",
+            "health.ok",
+            "health.degraded",
+            "health.sqlite",
+            "health.ollama",
+            "health.ollama_ok_with_models",
+            "health.runtime_ok",
+            "health.latency",
+            "models.available_title",
+            "models.current_marker",
+            "models.select_with",
+            "models.tap_button",
+            "models.updated",
+            "models.reset_default",
+            "models.not_found",
+            "models.not_available_anymore",
+            "models.no_models_available",
+            "image.default_prompt",
+            "image.model_without_vision",
+            "image.too_large",
+            "image.invalid_file",
+            "image.processing_error",
+            "image.read_error",
+            "errors.ollama_timeout",
+            "errors.ollama_connection",
+            "errors.ollama_list_models",
+            "errors.ollama_validate_model",
+            "errors.save_model_preference",
+            "errors.save_default_model_preference",
+            "errors.ollama_generic",
+            "agent.planner_instruction",
+            "agent.analyst_instruction",
+            "agent.chat_instruction",
+        )
 
     async def set_commands(self, application: Application) -> None:
-        await application.bot.set_my_commands(
-            [
-                BotCommand(command="start", description="Start the bot"),
-                BotCommand(command="help", description="Show available commands"),
-                BotCommand(command="health", description="Run operational checks"),
-                BotCommand(command="clear", description="Clear conversation context"),
-                BotCommand(command="models", description="List or select model"),
-                BotCommand(command="currentmodel", description="Show your current model"),
+        for locale in self._i18n.available_locales:
+            commands = [
+                BotCommand(command="start", description=self._i18n.t("commands.start", locale=locale)),
+                BotCommand(command="help", description=self._i18n.t("commands.help", locale=locale)),
+                BotCommand(command="health", description=self._i18n.t("commands.health", locale=locale)),
+                BotCommand(command="clear", description=self._i18n.t("commands.clear", locale=locale)),
+                BotCommand(command="models", description=self._i18n.t("commands.models", locale=locale)),
+                BotCommand(
+                    command="currentmodel",
+                    description=self._i18n.t("commands.currentmodel", locale=locale),
+                ),
             ]
-        )
+            if locale == self._i18n.default_locale:
+                await application.bot.set_my_commands(commands)
+            else:
+                await application.bot.set_my_commands(commands, language_code=locale)
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
         if not update.effective_message:
             return
+        locale = self._locale(update)
         self._log_user_event("command_start", update)
         await update.effective_message.reply_text(
-            "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\n"
-            "Use the buttons below or slash commands.",
+            self._i18n.t("messages.start_welcome", locale=locale),
             parse_mode=ParseMode.HTML,
-            reply_markup=self._main_keyboard(),
+            reply_markup=self._main_keyboard(locale),
         )
 
     async def help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -102,17 +176,11 @@ class BotHandlers:
             return
         if not update.effective_message:
             return
+        locale = self._locale(update)
         self._log_user_event("command_help", update)
         await update.effective_message.reply_text(
-            f"{ICON_INFO} Available commands:\n"
-            "/start - Start the bot\n"
-            "/help - Show this help\n"
-            "/health - Check runtime, database and Ollama status\n"
-            "/clear - Clear your context\n"
-            "/models - List models or select one with /models <name>\n"
-            "/currentmodel - Show your active model\n\n"
-            "You can send text messages or images (with optional caption instructions).",
-            reply_markup=self._main_keyboard(),
+            self._i18n.t("messages.help", locale=locale),
+            reply_markup=self._main_keyboard(locale),
         )
 
     async def health(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -120,6 +188,7 @@ class BotHandlers:
             return
         if not update.effective_message or not update.effective_user:
             return
+        locale = self._locale(update)
 
         self._log_user_event("command_health", update)
         started_at = monotonic()
@@ -139,7 +208,11 @@ class BotHandlers:
         try:
             models = await self._ollama_client.list_models()
             ollama_model_count = len(models)
-            ollama_detail = f"OK ({ollama_model_count} models visible)"
+            ollama_detail = self._i18n.t(
+                "health.ollama_ok_with_models",
+                locale=locale,
+                count=ollama_model_count,
+            )
         except Exception as error:
             logger.exception("health_ollama_check_failed user_id=%s", update.effective_user.id)
             ollama_ok = False
@@ -147,13 +220,23 @@ class BotHandlers:
 
         elapsed_ms = int((monotonic() - started_at) * 1000)
         overall_ok = db_ok and ollama_ok
-        overall_text = "OK" if overall_ok else "DEGRADED"
+        overall_text = (
+            self._i18n.t("health.ok", locale=locale)
+            if overall_ok
+            else self._i18n.t("health.degraded", locale=locale)
+        )
 
-        lines = [self._info(f"Healthcheck result: {overall_text}")]
-        lines.append(f"{ICON_SUCCESS if db_ok else ICON_ERROR} SQLite: {db_detail}")
-        lines.append(f"{ICON_SUCCESS if ollama_ok else ICON_ERROR} Ollama: {ollama_detail}")
-        lines.append(f"{ICON_INFO} Runtime: OK")
-        lines.append(f"{ICON_INFO} Latency: {elapsed_ms} ms")
+        lines = [self._info(self._i18n.t("health.result", locale=locale, status=overall_text))]
+        lines.append(
+            f"{ICON_SUCCESS if db_ok else ICON_ERROR} "
+            f"{self._i18n.t('health.sqlite', locale=locale, detail=db_detail)}"
+        )
+        lines.append(
+            f"{ICON_SUCCESS if ollama_ok else ICON_ERROR} "
+            f"{self._i18n.t('health.ollama', locale=locale, detail=ollama_detail)}"
+        )
+        lines.append(f"{ICON_INFO} {self._i18n.t('health.runtime_ok', locale=locale)}")
+        lines.append(f"{ICON_INFO} {self._i18n.t('health.latency', locale=locale, ms=elapsed_ms)}")
 
         logger.info(
             "healthcheck_result user_id=%s overall_ok=%s db_ok=%s ollama_ok=%s ollama_models=%d elapsed_ms=%d",
@@ -165,18 +248,21 @@ class BotHandlers:
             elapsed_ms,
         )
 
-        await update.effective_message.reply_text("\n".join(lines), reply_markup=self._main_keyboard())
+        await update.effective_message.reply_text(
+            "\n".join(lines), reply_markup=self._main_keyboard(locale)
+        )
 
     async def clear(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
         if not update.effective_message or not update.effective_user:
             return
+        locale = self._locale(update)
         self._log_user_event("command_clear", update)
         await update.effective_message.reply_text(
-            f"{ICON_WARNING} <b>Clear context?</b>\nThis will remove your current chat memory.",
+            self._warning(self._i18n.t("messages.clear_confirm", locale=locale)),
             parse_mode=ParseMode.HTML,
-            reply_markup=self._clear_inline_keyboard(),
+            reply_markup=self._clear_inline_keyboard(locale),
         )
 
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -185,6 +271,7 @@ class BotHandlers:
         if not update.effective_message or not update.effective_user:
             return
 
+        locale = self._locale(update)
         user_id = update.effective_user.id
         self._log_user_event("command_models", update)
         requested_model = " ".join(context.args).strip() if context.args else ""
@@ -193,36 +280,36 @@ class BotHandlers:
             models = await self._ollama_client.list_models()
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
-                self._warning("Ollama is taking too long to respond. Please try again shortly."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaConnectionError:
             await update.effective_message.reply_text(
-                self._error("I could not connect to Ollama. Please contact the bot administrator."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaError as error:
             logger.warning("Ollama error while listing models: %s", error)
             await update.effective_message.reply_text(
-                self._error("I could not load models from Ollama right now. Please try again later."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_list_models", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
         if not models:
             await update.effective_message.reply_text(
-                self._info("No models are currently available in Ollama."),
-                reply_markup=self._main_keyboard(),
+                self._info(self._i18n.t("models.no_models_available", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
         if requested_model:
             if requested_model not in models:
                 await update.effective_message.reply_text(
-                    self._warning("Model not found. Use /models to see available names."),
-                    reply_markup=self._main_keyboard(),
+                    self._warning(self._i18n.t("models.not_found", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
             try:
@@ -230,26 +317,26 @@ class BotHandlers:
             except Exception as error:
                 logger.exception("Failed to save user model preference: %s", error)
                 await update.effective_message.reply_text(
-                    self._error("I could not save your model preference. Please try again later."),
-                    reply_markup=self._main_keyboard(),
+                    self._error(self._i18n.t("errors.save_model_preference", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
             await update.effective_message.reply_text(
-                self._success(f"Model updated to: {requested_model}"),
-                reply_markup=self._main_keyboard(),
+                self._success(self._i18n.t("models.updated", locale=locale, model=requested_model)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
         current_model = self._get_user_model(user_id)
-        lines = [self._info("Available models:")]
+        lines = [self._info(self._i18n.t("models.available_title", locale=locale))]
         for model in models:
-            marker = " (current)" if model == current_model else ""
+            marker = self._i18n.t("models.current_marker", locale=locale) if model == current_model else ""
             lines.append(f"- {model}{marker}")
         lines.append("")
-        lines.append("Select one with: /models <name>")
-        lines.append("Or tap a button below.")
+        lines.append(self._i18n.t("models.select_with", locale=locale))
+        lines.append(self._i18n.t("models.tap_button", locale=locale))
 
-        inline_keyboard = self._models_inline_keyboard(models, current_model)
+        inline_keyboard = self._models_inline_keyboard(locale, models, current_model)
         await update.effective_message.reply_text(
             "\n".join(lines),
             reply_markup=inline_keyboard,
@@ -263,6 +350,7 @@ class BotHandlers:
             return
         if not query.message:
             return
+        locale = self._locale(update)
 
         await query.answer()
 
@@ -273,16 +361,16 @@ class BotHandlers:
         action = data.removeprefix(CLEAR_CALLBACK_PREFIX).strip()
         if action == "cancel":
             await query.message.reply_text(
-                self._info("Clear cancelled."),
-                reply_markup=self._main_keyboard(),
+                self._info(self._i18n.t("messages.clear_cancelled", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
         if action == "confirm":
             self._context_store.clear(update.effective_user.id)
             await query.message.reply_text(
-                self._success("Your conversation context has been cleared."),
-                reply_markup=self._main_keyboard(),
+                self._success(self._i18n.t("messages.clear_done", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
 
     async def select_model_callback(
@@ -295,6 +383,7 @@ class BotHandlers:
             return
         if not query.message:
             return
+        locale = self._locale(update)
 
         await query.answer()
 
@@ -316,21 +405,21 @@ class BotHandlers:
             models = await self._ollama_client.list_models()
         except OllamaTimeoutError:
             await query.message.reply_text(
-                self._warning("Ollama is taking too long to respond. Please try again shortly."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaConnectionError:
             await query.message.reply_text(
-                self._error("I could not connect to Ollama. Please contact the bot administrator."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaError as error:
             logger.warning("Ollama error while selecting model: %s", error)
             await query.message.reply_text(
-                self._error("I could not validate the selected model right now. Please try again later."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_validate_model", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
@@ -342,21 +431,23 @@ class BotHandlers:
                     logger.exception("Failed to save default model preference: %s", error)
                     await query.message.reply_text(
                         self._error(
-                            "I could not save your default model preference. Please try again later."
+                            self._i18n.t("errors.save_default_model_preference", locale=locale)
                         ),
-                        reply_markup=self._main_keyboard(),
+                        reply_markup=self._main_keyboard(locale),
                     )
                     return
 
                 await query.message.reply_text(
-                    self._success(f"Model reset to default: {self._default_model}"),
-                    reply_markup=self._main_keyboard(),
+                    self._success(
+                        self._i18n.t("models.reset_default", locale=locale, model=self._default_model)
+                    ),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
 
             await query.message.reply_text(
-                self._warning("Model is no longer available. Use /models to refresh the list."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("models.not_available_anymore", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
@@ -365,14 +456,14 @@ class BotHandlers:
         except Exception as error:
             logger.exception("Failed to save user model preference: %s", error)
             await query.message.reply_text(
-                self._error("I could not save your model preference. Please try again later."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.save_model_preference", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
         await query.message.reply_text(
-            self._success(f"Model updated to: {selected_model}"),
-            reply_markup=self._main_keyboard(),
+            self._success(self._i18n.t("models.updated", locale=locale, model=selected_model)),
+            reply_markup=self._main_keyboard(locale),
         )
 
     async def current_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -381,20 +472,21 @@ class BotHandlers:
         if not update.effective_message or not update.effective_user:
             return
 
+        locale = self._locale(update)
         self._log_user_event("command_currentmodel", update)
         user_id = update.effective_user.id
         current_model = self._get_user_model(user_id)
         await update.effective_message.reply_text(
-            self._info(f"Current model: {current_model}"),
+            self._info(self._i18n.t("messages.current_model", locale=locale, model=current_model)),
             reply_markup=InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton(
-                            text="🧠 Open Models",
+                            text=self._i18n.t("ui.buttons.open_models", locale=locale),
                             callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_REFRESH_ACTION}",
                         ),
                         InlineKeyboardButton(
-                            text="♻️ Use Default",
+                            text=self._i18n.t("ui.buttons.use_default", locale=locale),
                             callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_DEFAULT_ACTION}",
                         ),
                     ]
@@ -409,16 +501,17 @@ class BotHandlers:
             return
 
         text = (update.effective_message.text or "").strip()
-        if text == BUTTON_MODELS:
+        action = self._quick_action_map.get(text)
+        if action == "models":
             await self.models(update, context)
             return
-        if text == BUTTON_CURRENT_MODEL:
+        if action == "current_model":
             await self.current_model(update, context)
             return
-        if text == BUTTON_CLEAR:
+        if action == "clear":
             await self.clear(update, context)
             return
-        if text == BUTTON_HELP:
+        if action == "help":
             await self.help(update, context)
             return
 
@@ -428,12 +521,13 @@ class BotHandlers:
         if not update.effective_message or not update.effective_user:
             return
 
+        locale = self._locale(update)
         user_text = (update.effective_message.text or "").strip()
         self._log_user_event("message_received", update)
         if not user_text:
             await update.effective_message.reply_text(
-                self._warning("Please send a non-empty message."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("messages.please_send_non_empty", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
@@ -442,7 +536,7 @@ class BotHandlers:
         model = self._get_user_model(user_id)
         started_at = monotonic()
         agent_name = self._select_agent(user_text)
-        system_instruction = self._agent_system_instruction(agent_name)
+        system_instruction = self._agent_system_instruction(agent_name, locale)
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
@@ -456,21 +550,21 @@ class BotHandlers:
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
-                self._warning("Ollama is taking too long to respond. Please try again shortly."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaConnectionError:
             await update.effective_message.reply_text(
-                self._error("I could not connect to Ollama. Please contact the bot administrator."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaError as error:
             logger.warning("Ollama error: %s", error)
             await update.effective_message.reply_text(
-                self._error("Ollama returned an error. Please try again in a few moments."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_generic", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
@@ -497,14 +591,15 @@ class BotHandlers:
         if not update.effective_message or not update.effective_user:
             return
 
+        locale = self._locale(update)
         message = update.effective_message
         user_id = update.effective_user.id
         caption = (message.caption or "").strip()
-        user_prompt = caption or "Describe the image and extract any visible text if present."
+        user_prompt = caption or self._i18n.t("image.default_prompt", locale=locale)
         model = self._get_user_model(user_id)
         turns = self._context_store.get_turns(user_id)
         agent_name = self._select_agent(user_prompt)
-        system_instruction = self._agent_system_instruction(agent_name)
+        system_instruction = self._agent_system_instruction(agent_name, locale)
         turns_for_model: list[ConversationTurn] = [
             ConversationTurn(role="system", content=system_instruction),
             *turns,
@@ -516,9 +611,9 @@ class BotHandlers:
             if vision_support is False:
                 await message.reply_text(
                     self._warning(
-                        f"Your current model ({model}) does not support images. Use /models to choose a vision model."
+                        self._i18n.t("image.model_without_vision", locale=locale, model=model)
                     ),
-                    reply_markup=self._main_keyboard(),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
 
@@ -528,10 +623,13 @@ class BotHandlers:
                 if image_bytes_size > self._image_max_bytes:
                     await message.reply_text(
                         self._warning(
-                            "Image is too large. Maximum allowed size is "
-                            f"{self._format_size(self._image_max_bytes)}."
+                            self._i18n.t(
+                                "image.too_large",
+                                locale=locale,
+                                max_size=self._format_size(self._image_max_bytes),
+                            )
                         ),
-                        reply_markup=self._main_keyboard(),
+                        reply_markup=self._main_keyboard(locale),
                     )
                     return
                 file = await message.photo[-1].get_file()
@@ -541,10 +639,13 @@ class BotHandlers:
                 if image_bytes_size > self._image_max_bytes:
                     await message.reply_text(
                         self._warning(
-                            "Image is too large. Maximum allowed size is "
-                            f"{self._format_size(self._image_max_bytes)}."
+                            self._i18n.t(
+                                "image.too_large",
+                                locale=locale,
+                                max_size=self._format_size(self._image_max_bytes),
+                            )
                         ),
-                        reply_markup=self._main_keyboard(),
+                        reply_markup=self._main_keyboard(locale),
                     )
                     return
                 file = await message.document.get_file()
@@ -552,8 +653,8 @@ class BotHandlers:
 
             if not photo_bytes:
                 await message.reply_text(
-                    self._warning("Please send a valid image file."),
-                    reply_markup=self._main_keyboard(),
+                    self._warning(self._i18n.t("image.invalid_file", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
 
@@ -563,10 +664,13 @@ class BotHandlers:
             if image_bytes_size > self._image_max_bytes:
                 await message.reply_text(
                     self._warning(
-                        "Image is too large. Maximum allowed size is "
-                        f"{self._format_size(self._image_max_bytes)}."
+                        self._i18n.t(
+                            "image.too_large",
+                            locale=locale,
+                            max_size=self._format_size(self._image_max_bytes),
+                        )
                     ),
-                    reply_markup=self._main_keyboard(),
+                    reply_markup=self._main_keyboard(locale),
                 )
                 return
 
@@ -582,30 +686,28 @@ class BotHandlers:
             )
         except OllamaTimeoutError:
             await message.reply_text(
-                self._warning("Ollama is taking too long to respond. Please try again shortly."),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaConnectionError:
             await message.reply_text(
-                self._error("I could not connect to Ollama. Please contact the bot administrator."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except OllamaError as error:
             logger.warning("Ollama image error: %s", error)
             await message.reply_text(
-                self._error("I could not process this image with the current model. Try another model in /models."),
-                reply_markup=self._main_keyboard(),
+                self._error(self._i18n.t("image.processing_error", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
         except Exception as error:
             logger.warning("image_read_failed user_id=%s error=%s", user_id, error)
             await message.reply_text(
-                self._warning(
-                    "I could not read this image file. Please resend it as a valid JPG/PNG image."
-                ),
-                reply_markup=self._main_keyboard(),
+                self._warning(self._i18n.t("image.read_error", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
             return
 
@@ -631,10 +733,11 @@ class BotHandlers:
             return
         if not update.effective_message:
             return
+        locale = self._locale(update)
 
         await update.effective_message.reply_text(
-            self._warning("Voice and audio messages are disabled. Please send text or image messages."),
-            reply_markup=self._main_keyboard(),
+            self._warning(self._i18n.t("messages.voice_disabled", locale=locale)),
+            reply_markup=self._main_keyboard(locale),
         )
 
     async def _generate_response(
@@ -700,22 +803,12 @@ class BotHandlers:
             return "analyst"
         return "chat"
 
-    @staticmethod
-    def _agent_system_instruction(agent_name: str) -> str:
+    def _agent_system_instruction(self, agent_name: str, locale: str) -> str:
         if agent_name == "planner":
-            return (
-                "You are a planning assistant. Reply in natural language with clear actionable steps, "
-                "prioritize practical guidance, and avoid JSON unless the user explicitly requests JSON."
-            )
+            return self._i18n.t("agent.planner_instruction", locale=locale)
         if agent_name == "analyst":
-            return (
-                "You are an analysis assistant. Reply in concise natural language with key findings, "
-                "high-confidence conclusions, and avoid JSON unless the user explicitly requests JSON."
-            )
-        return (
-            "You are a conversational assistant. Reply naturally, clearly, and helpfully. "
-            "Do not output JSON unless the user explicitly asks for JSON."
-        )
+            return self._i18n.t("agent.analyst_instruction", locale=locale)
+        return self._i18n.t("agent.chat_instruction", locale=locale)
 
     def _get_user_model(self, user_id: int) -> str:
         try:
@@ -740,24 +833,26 @@ class BotHandlers:
 
         if apply_rate_limit and self._rate_limiter and not self._rate_limiter.allow(user.id):
             logger.warning("rate_limit_exceeded user_id=%s", user.id)
+            locale = self._locale(update)
             target_message = update.effective_message or (
                 update.callback_query.message if update.callback_query else None
             )
             if target_message:
                 await target_message.reply_text(
-                    self._warning("Rate limit exceeded. Please wait a few seconds and try again."),
-                    reply_markup=self._main_keyboard(),
+                    self._warning(self._i18n.t("messages.rate_limit_exceeded", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
                 )
             return False
 
         return True
 
     async def _deny_access(self, update: Update) -> None:
-        denied_text = self._error("You are not allowed to use this bot.")
+        locale = self._locale(update)
+        denied_text = self._error(self._i18n.t("messages.access_denied", locale=locale))
 
         query = update.callback_query
         if query:
-            await query.answer("Access denied", show_alert=True)
+            await query.answer(self._i18n.t("messages.access_denied_alert", locale=locale), show_alert=True)
 
         target_message = update.effective_message or (query.message if query else None)
         if target_message:
@@ -794,8 +889,33 @@ class BotHandlers:
         mib = num_bytes / (1024 * 1024)
         return f"{mib:.1f} MB"
 
-    @staticmethod
-    def _models_inline_keyboard(models: list[str], current_model: str) -> InlineKeyboardMarkup:
+    def _locale(self, update: Update) -> str:
+        language_code = update.effective_user.language_code if update.effective_user else None
+        return self._i18n.resolve_locale(language_code)
+
+    def _build_quick_action_map(self) -> dict[str, str]:
+        quick_action_keys = {
+            "models": "ui.buttons.models",
+            "current_model": "ui.buttons.current_model",
+            "clear": "ui.buttons.clear",
+            "help": "ui.buttons.help",
+        }
+        mapping: dict[str, str] = {}
+        for locale in self._i18n.available_locales:
+            for action, key in quick_action_keys.items():
+                mapping[self._i18n.t(key, locale=locale)] = action
+        return mapping
+
+    def quick_actions_regex(self) -> str:
+        labels = sorted({re.escape(label) for label in self._quick_action_map})
+        return rf"^({'|'.join(labels)})$"
+
+    def _models_inline_keyboard(
+        self,
+        locale: str,
+        models: list[str],
+        current_model: str,
+    ) -> InlineKeyboardMarkup:
         rows: list[list[InlineKeyboardButton]] = []
         row: list[InlineKeyboardButton] = []
 
@@ -818,7 +938,7 @@ class BotHandlers:
             rows = [
                 [
                     InlineKeyboardButton(
-                        text="Refresh models",
+                        text=self._i18n.t("ui.buttons.refresh_models", locale=locale),
                         callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_REFRESH_ACTION}",
                     )
                 ]
@@ -827,11 +947,11 @@ class BotHandlers:
         rows.append(
             [
                 InlineKeyboardButton(
-                    text="♻️ Use default",
+                    text=self._i18n.t("ui.buttons.use_default", locale=locale),
                     callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_DEFAULT_ACTION}",
                 ),
                 InlineKeyboardButton(
-                    text="🔄 Refresh",
+                    text=self._i18n.t("ui.buttons.refresh", locale=locale),
                     callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_REFRESH_ACTION}",
                 ),
             ]
@@ -839,29 +959,33 @@ class BotHandlers:
 
         return InlineKeyboardMarkup(rows)
 
-    @staticmethod
-    def _main_keyboard() -> ReplyKeyboardMarkup:
+    def _main_keyboard(self, locale: str) -> ReplyKeyboardMarkup:
         return ReplyKeyboardMarkup(
             keyboard=[
-                [KeyboardButton(BUTTON_MODELS), KeyboardButton(BUTTON_CURRENT_MODEL)],
-                [KeyboardButton(BUTTON_CLEAR), KeyboardButton(BUTTON_HELP)],
+                [
+                    KeyboardButton(self._i18n.t("ui.buttons.models", locale=locale)),
+                    KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
+                ],
+                [
+                    KeyboardButton(self._i18n.t("ui.buttons.clear", locale=locale)),
+                    KeyboardButton(self._i18n.t("ui.buttons.help", locale=locale)),
+                ],
             ],
             resize_keyboard=True,
             is_persistent=True,
-            input_field_placeholder="Write a message or use buttons…",
+            input_field_placeholder=self._i18n.t("ui.input_placeholder", locale=locale),
         )
 
-    @staticmethod
-    def _clear_inline_keyboard() -> InlineKeyboardMarkup:
+    def _clear_inline_keyboard(self, locale: str) -> InlineKeyboardMarkup:
         return InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
-                        text="✅ Confirm",
+                        text=self._i18n.t("ui.buttons.confirm", locale=locale),
                         callback_data=f"{CLEAR_CALLBACK_PREFIX}confirm",
                     ),
                     InlineKeyboardButton(
-                        text="❌ Cancel",
+                        text=self._i18n.t("ui.buttons.cancel", locale=locale),
                         callback_data=f"{CLEAR_CALLBACK_PREFIX}cancel",
                     ),
                 ]
@@ -881,9 +1005,7 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CallbackQueryHandler(handlers.clear_callback, pattern=r"^clear:"))
     application.add_handler(
         MessageHandler(
-            filters.Regex(
-                rf"^({BUTTON_MODELS}|{BUTTON_CURRENT_MODEL}|{BUTTON_CLEAR}|{BUTTON_HELP})$"
-            ),
+            filters.Regex(handlers.quick_actions_regex()),
             handlers.quick_actions,
         )
     )

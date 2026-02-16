@@ -111,6 +111,7 @@ services:
       RATE_LIMIT_MAX_MESSAGES: ${RATE_LIMIT_MAX_MESSAGES:-8}
       RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-30}
       IMAGE_MAX_BYTES: ${IMAGE_MAX_BYTES:-5242880}
+      BOT_DEFAULT_LOCALE: ${BOT_DEFAULT_LOCALE:-en}
       TZ: ${TZ:-Europe/Madrid}
 ```
 
@@ -132,9 +133,11 @@ See `.env.example` for the complete list and example values.
 - `RATE_LIMIT_MAX_MESSAGES`: Max user messages allowed inside the rate-limit window.
 - `RATE_LIMIT_WINDOW_SECONDS`: Sliding window size (seconds) for rate limiting.
 - `IMAGE_MAX_BYTES`: Maximum accepted image size in bytes for image analysis requests.
+- `BOT_DEFAULT_LOCALE`: Fallback locale when user Telegram language is not available in bot locales.
 - `TZ`: Timezone in IANA format (for example `Europe/Madrid`).
 
 `ALLOWED_USER_IDS` is required and must contain at least one numeric Telegram user ID.
+Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English.
 
 ## Docker Compose (Fully Variable-Driven)
 

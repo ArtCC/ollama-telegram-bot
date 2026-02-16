@@ -18,6 +18,7 @@ class Settings:
     rate_limit_max_messages: int
     rate_limit_window_seconds: int
     image_max_bytes: int
+    bot_default_locale: str
     log_level: str
 
 
@@ -66,6 +67,7 @@ def load_settings() -> Settings:
     image_max_bytes_raw = os.getenv("IMAGE_MAX_BYTES", "5242880").strip()
     use_chat_api_raw = os.getenv("OLLAMA_USE_CHAT_API", "true")
     ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m").strip()
+    bot_default_locale = os.getenv("BOT_DEFAULT_LOCALE", "en").strip().lower()
 
     try:
         request_timeout_seconds = int(timeout_raw)
@@ -91,6 +93,8 @@ def load_settings() -> Settings:
         raise ValueError("IMAGE_MAX_BYTES must be >= 1024")
     if not ollama_keep_alive:
         raise ValueError("OLLAMA_KEEP_ALIVE cannot be empty")
+    if not bot_default_locale:
+        raise ValueError("BOT_DEFAULT_LOCALE cannot be empty")
 
     allowed_user_ids = _parse_allowed_user_ids(_require_env("ALLOWED_USER_IDS"))
 
@@ -107,5 +111,6 @@ def load_settings() -> Settings:
         rate_limit_max_messages=rate_limit_max_messages,
         rate_limit_window_seconds=rate_limit_window_seconds,
         image_max_bytes=image_max_bytes,
+        bot_default_locale=bot_default_locale,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )
