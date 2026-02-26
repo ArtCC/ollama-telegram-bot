@@ -1851,32 +1851,43 @@ class BotHandlers:
             if prompt_images:
                 # Route through chat_with_image which has _looks_like_missing_image_response
                 # fallback detection — identical path to direct image upload.
-                return await self._ollama_client.chat_with_image(
-                    model=model,
-                    prompt=prompt,
-                    images=prompt_images,
-                    context_turns=turns_for_model,
-                    keep_alive=self._keep_alive,
-                )
-            try:
-                return await self._ollama_client.chat(
-                    model=model,
-                    prompt=prompt,
-                    context_turns=turns_for_model,
-                    keep_alive=self._keep_alive,
-                )
-            except OllamaError as error:
-                logger.warning(
-                    "ollama_chat_fallback_to_generate user_id=%s model=%s error=%s",
-                    user_id,
-                    model,
-                    error,
-                )
+                try:
+                    return await self._ollama_client.chat_with_image(
+                        model=model,
+                        prompt=prompt,
+                        images=prompt_images,
+                        context_turns=turns_for_model,
+                        keep_alive=self._keep_alive,
+                    )
+                except OllamaError as error:
+                    logger.warning(
+                        "ollama_chat_image_fallback_to_generate user_id=%s model=%s error=%s",
+                        user_id,
+                        model,
+                        error,
+                    )
+            else:
+                try:
+                    return await self._ollama_client.chat(
+                        model=model,
+                        prompt=prompt,
+                        context_turns=turns_for_model,
+                        keep_alive=self._keep_alive,
+                    )
+                except OllamaError as error:
+                    logger.warning(
+                        "ollama_chat_fallback_to_generate user_id=%s model=%s error=%s",
+                        user_id,
+                        model,
+                        error,
+                    )
 
         return await self._ollama_client.generate(
             model=model,
             prompt=prompt,
             context_turns=turns_for_model,
+            images=prompt_images if prompt_images else None,
+            keep_alive=self._keep_alive,
         )
 
     @staticmethod

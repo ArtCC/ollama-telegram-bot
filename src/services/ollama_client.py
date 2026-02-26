@@ -75,14 +75,27 @@ class OllamaClient:
         model: str,
         prompt: str,
         context_turns: list[ConversationTurn],
+        images: list[str] | None = None,
+        keep_alive: str | None = None,
     ) -> OllamaResponse:
         started_at = monotonic()
-        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=context_turns)
-        payload = {
+        # Per /api/generate spec: extract the system turn and pass it as a dedicated
+        # top-level field; remaining turns build the conversational prompt.
+        system_turns = [t for t in context_turns if t.role == "system"]
+        non_system_turns = [t for t in context_turns if t.role != "system"]
+        system_content = system_turns[-1].content if system_turns else None
+        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=non_system_turns)
+        payload: dict[str, Any] = {
             "model": model,
             "prompt": composed_prompt,
             "stream": False,
         }
+        if system_content:
+            payload["system"] = system_content
+        if images:
+            payload["images"] = images
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
 
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
@@ -398,11 +411,7 @@ class OllamaClient:
         keep_alive: str,
     ) -> OllamaResponse:
         started_at = monotonic()
-        messages = self._compose_messages_with_image(
-            prompt=prompt,
-            images=images,
-            context_turns=context_turns,
-        )
+        messages = self._compose_messages(prompt=prompt, context_turns=context_turns, prompt_images=images)
         payload = {
             "model": model,
             "messages": messages,
@@ -446,6 +455,7 @@ class OllamaClient:
                         prompt=prompt,
                         images=images,
                         context_turns=context_turns,
+                        keep_alive=keep_alive,
                     )
                 return OllamaResponse(text=text)
             except httpx.TimeoutException as error:
@@ -473,6 +483,7 @@ class OllamaClient:
                         prompt=prompt,
                         images=images,
                         context_turns=context_turns,
+                        keep_alive=keep_alive,
                     )
                 raise OllamaError(
                     f"Ollama returned HTTP {error.response.status_code}: {detail}"
@@ -489,15 +500,24 @@ class OllamaClient:
         prompt: str,
         images: list[str],
         context_turns: list[ConversationTurn],
+        keep_alive: str | None = None,
     ) -> OllamaResponse:
         started_at = monotonic()
-        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=context_turns)
-        payload = {
+        # Extract system turn for dedicated /api/generate system field
+        system_turns = [t for t in context_turns if t.role == "system"]
+        non_system_turns = [t for t in context_turns if t.role != "system"]
+        system_content = system_turns[-1].content if system_turns else None
+        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=non_system_turns)
+        payload: dict[str, Any] = {
             "model": model,
             "prompt": composed_prompt,
             "images": images,
             "stream": False,
         }
+        if system_content:
+            payload["system"] = system_content
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
 
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
@@ -549,14 +569,39 @@ class OllamaClient:
 
     @staticmethod
     def _looks_like_missing_image_response(text: str) -> bool:
+        """Return True only when the model explicitly states it cannot access an image.
+
+        Patterns are intentionally narrow to avoid false positives on valid
+        image-analysis responses that happen to mention the word "image".
+        Covers English, Spanish, French, German and Italian.
+        """
         normalized = text.strip().lower()
         if not normalized:
             return False
 
         patterns = (
-            r"\b(send|upload|attach|provide)\b.{0,30}\b(image|photo|picture)\b",
-            r"\b(can(?:not|'t)\s+see|don't\s+see|no)\b.{0,30}\b(image|photo|picture)\b",
-            r"\bplease\b.{0,20}\b(image|photo|picture)\b",
+            # English — model asks user to send an image it cannot see
+            r"\b(send|upload|attach|provide)\b.{0,40}\b(image|photo|picture)\b",
+            r"\b(cannot|can't|unable to)\b.{0,30}\b(see|view|access|process)\b.{0,40}\b(image|photo|picture)\b",
+            r"\bno\s+(image|photo|picture)\s+(was\s+)?(provided|attached|found|included)\b",
+            r"\bi\s+(do\s+not|don't)\s+(see|have|receive)\b.{0,30}\b(image|photo|picture)\b",
+            # Spanish
+            r"\b(env[ií]a?|adjunta?|proporciona?|comparte?)\b.{0,40}\b(imagen|foto|fotograf[ií]a)\b",
+            r"\bno\s+puedo\b.{0,30}\b(ver|acceder|procesar)\b.{0,40}\b(imagen|foto)\b",
+            r"\bno\s+(se\s+ha\s+|hay\s+)?(proporcionado|adjuntado|enviado)\b.{0,30}\b(imagen|foto)\b",
+            r"\bno\s+(veo|tengo|recibo)\b.{0,30}\b(imagen|foto)\b",
+            # German
+            r"\b(sende?|lade?\s+hoch|h[äa]nge?\s+an)\b.{0,40}\b(bild|foto|abbildung)\b",
+            r"\bkann\s+kein\b.{0,30}\b(bild|foto|abbildung)\b",
+            r"\b(kein|keine)\s+(bild|foto|abbildung)\b.{0,30}\b(vorhanden|gefunden|angeh[äa]ngt)\b",
+            # French
+            r"\b(envoyer|joindre|fournir|partager)\b.{0,40}\b(image|photo)\b",
+            r"\bne\s+(peux|suis)\s+pas\b.{0,30}\b(voir|acc[eé]der|traiter)\b.{0,40}\b(image|photo)\b",
+            r"\baucune?\s+(image|photo)\b.{0,30}\b(fournie?|jointe?|trouv[ée]e?)\b",
+            # Italian
+            r"\b(invia|allega|fornisci|condividi)\b.{0,40}\b(immagine|foto)\b",
+            r"\bnon\s+posso\b.{0,30}\b(vedere|accedere|elaborare)\b.{0,40}\b(immagine|foto)\b",
+            r"\bnessuna?\s+(immagine|foto)\b.{0,30}\b(fornita|allegata|trovata)\b",
         )
         return any(re.search(pattern, normalized) for pattern in patterns)
 
@@ -606,23 +651,3 @@ class OllamaClient:
         messages.append(current_msg)
         return messages
 
-    @staticmethod
-    def _compose_messages_with_image(
-        prompt: str,
-        images: list[str],
-        context_turns: list[ConversationTurn],
-    ) -> list[dict[str, Any]]:
-        messages: list[dict[str, Any]] = []
-        for turn in context_turns:
-            if turn.role not in {"system", "user", "assistant", "tool"}:
-                continue
-            messages.append({"role": turn.role, "content": turn.content})
-
-        messages.append(
-            {
-                "role": "user",
-                "content": prompt,
-                "images": images,
-            }
-        )
-        return messages
