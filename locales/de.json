@@ -119,6 +119,11 @@
     "files_storage": "Ich konnte deine gespeicherten Dateien gerade nicht aktualisieren. Bitte versuche es später erneut.",
     "ollama_generic": "Ollama hat einen Fehler zurückgegeben. Bitte versuche es in wenigen Augenblicken erneut."
   },
+  "orchestrator": {
+    "switched_model": "💡 {model} für diese {task} verwendet.",
+    "task_vision": "Bildanfrage",
+    "task_code": "Code-Frage"
+  },
   "agent": {
     "planner_instruction": "Du bist ein Planungsassistent. Antworte in natürlicher Sprache mit klaren, umsetzbaren Schritten, priorisiere praktische Anleitung und vermeide JSON, sofern der Nutzer es nicht ausdrücklich anfordert.",
     "analyst_instruction": "Du bist ein Analyseassistent. Antworte in prägnanter natürlicher Sprache mit zentralen Erkenntnissen und Schlussfolgerungen mit hoher Zuversicht und vermeide JSON, sofern der Nutzer es nicht ausdrücklich anfordert.",

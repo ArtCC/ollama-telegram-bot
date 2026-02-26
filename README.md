@@ -49,6 +49,7 @@ ollama-telegram-bot/
 │   │   ├── __init__.py
 │   │   └── service.py
 │   ├── services/
+│   │   ├── model_orchestrator.py
 │   │   └── ollama_client.py
 │   └── utils/
 │       ├── logging.py
@@ -117,6 +118,13 @@ ollama-telegram-bot/
 - [x] Image-related RAG instructions always injected when image assets are in context (no keyword dependency).
 - [x] Document confirmation message includes asset ID and `/askfile` hint for immediate use.
 - [x] Image RAG aligned with Ollama `/api/chat` spec: stored image bytes are re-sent in the `images` field of the conversation history message, giving the model actual pixel data instead of a text label when answering follow-up questions.
+- [x] Upload-only mode in `/files`: press **📤 Add file** to save an image without triggering model analysis.
+- [x] Image preview in `/files`: press **🖼️ Preview** on any saved image to see a thumbnail inline.
+- [x] **Model orchestrator**: automatic local model selection per request type — vision model for images, code-specialised model for programming questions, user-preferred model for everything else.
+- [x] Pre-flight vision capability check: warns user immediately if no vision-capable model is installed, instead of forwarding to a blind model.
+- [x] Ollama Vision API compliance: `images` field correctly placed inside the user message object for `/api/chat`; `images`, `system`, and `keep_alive` at root level for `/api/generate`.
+- [x] Multilingual `_looks_like_missing_image_response` detection covering EN/ES/DE/FR/IT with narrowed patterns to eliminate false positives.
+- [x] Full observability logging across the image pipeline (task detection, model selection, payload details, raw response preview, fallback reasons).
 
 ## Files Context (MVP)
 
@@ -207,6 +215,21 @@ Current locale files: `locales/en.json`, `locales/es.json`, `locales/de.json`, `
 When uploading a document, you can add a caption instruction to review it immediately.
 Regardless of caption, uploaded documents/images are saved and managed later with `/files`.
 Use `/files` to control exactly which saved files are active as context for the next model responses.
+
+## Model Orchestrator
+
+The bot includes an automatic model orchestrator that selects the best available local Ollama model for each request without any user action required.
+
+| Task | Detection | Behaviour |
+|---|---|---|
+| **Vision** | Message contains images | Checks if the current model supports vision. If not, scans all installed local models and switches to the first vision-capable one. |
+| **Code** | Prompt contains programming keywords (function, class, Python, JavaScript, `def `, traceback, …) | Checks if a code-specialised model is installed (`codellama`, `deepseek-coder`, `codegemma`, `codestral`, …) and switches to it. |
+| **General** | Everything else | Always uses the user's preferred model unchanged. |
+
+When the model is switched the bot adds a small note at the end of the reply: `💡 gemma3:latest used for this vision request.`  
+If no suitable model is installed for the task (e.g. no vision model at all), the bot falls back to the user's preferred model and, for vision, warns the user instead of forwarding the image to an incompatible model.
+
+The available-model list is cached for 60 seconds; vision capability results are cached indefinitely per session.
 
 For Ollama Cloud without daemon `ollama signin`, set `OLLAMA_API_KEY` and keep `OLLAMA_CLOUD_BASE_URL=https://ollama.com`; `*-cloud` model requests are routed directly to cloud API.
 

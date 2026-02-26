@@ -119,6 +119,11 @@
     "files_storage": "Je n’ai pas pu mettre à jour vos fichiers enregistrés pour le moment. Veuillez réessayer plus tard.",
     "ollama_generic": "Ollama a renvoyé une erreur. Veuillez réessayer dans quelques instants."
   },
+  "orchestrator": {
+    "switched_model": "💡 {model} utilisé pour cette {task}.",
+    "task_vision": "demande d'image",
+    "task_code": "question de code"
+  },
   "agent": {
     "planner_instruction": "Vous êtes un assistant de planification. Répondez en langage naturel avec des étapes claires et actionnables, privilégiez les conseils pratiques et évitez le JSON sauf si l’utilisateur le demande explicitement.",
     "analyst_instruction": "Vous êtes un assistant d’analyse. Répondez en langage naturel de manière concise avec les points clés et des conclusions de haute confiance, et évitez le JSON sauf si l’utilisateur le demande explicitement.",

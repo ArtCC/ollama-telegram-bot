@@ -119,6 +119,11 @@
     "files_storage": "I could not update your saved files right now. Please try again later.",
     "ollama_generic": "Ollama returned an error. Please try again in a few moments."
   },
+  "orchestrator": {
+    "switched_model": "💡 {model} used for this {task}.",
+    "task_vision": "vision request",
+    "task_code": "code question"
+  },
   "agent": {
     "planner_instruction": "You are a planning assistant. Reply in natural language with clear actionable steps, prioritize practical guidance, and avoid JSON unless the user explicitly requests JSON.",
     "analyst_instruction": "You are an analysis assistant. Reply in concise natural language with key findings, high-confidence conclusions, and avoid JSON unless the user explicitly requests JSON.",

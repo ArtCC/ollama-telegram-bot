@@ -16,11 +16,20 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added persistent user file storage (documents and analyzed images) in SQLite for reusable context.
 - Added `/files` command with inline pagination, select/deselect actions, and delete action per file.
 - Added selected-files context injection in chat/image prompts (RAG-lite retrieval over selected user files).
+- Added upload-only mode in `/files` (`📤 Add file`): saves an image without triggering model analysis.
+- Added image preview in `/files` (`🖼️ Preview`): returns a stored image as a thumbnail inline.
+- Added **model orchestrator** (`src/services/model_orchestrator.py`): automatically selects the best available local model per request — vision model for image requests, code-specialised model for programming questions (`codellama`, `deepseek-coder`, `codegemma`, `codestral`, …), user-preferred model for general chat.
+- Added pre-flight vision capability check in `on_image`: warns the user immediately when no vision-capable model is installed, instead of silently forwarding the image to an incompatible model.
+- Added detailed observability logging across the full image pipeline: task detection, model selection, payload size, raw response preview, fallback path, and matched missing-image patterns.
 
 ### Changed
 - Updated local and web model pagination to render over the same message (no new message per page when edit is possible).
 - Updated command registry, quick actions keyboard, and localized help text to clearly separate local models and web catalog models.
-- Updated localized command/button/error catalog to support file-management workflow.
+- Updated localized command/button/error catalog to support file-management workflow and orchestrator notifications.
+- Corrected Ollama Vision API usage: `images` field now placed inside the user message object for `/api/chat`; `images`, `system`, and `keep_alive` sent at root level for `/api/generate` as per the official spec.
+- Rewrote `_looks_like_missing_image_response` with narrowed multilingual patterns (EN/ES/DE/FR/IT) eliminating false positives on valid image-analysis responses.
+- Refactored `chat_with_image` to reuse `_compose_messages` with `prompt_images`; removed duplicate `_compose_messages_with_image` method.
+- Both `/api/generate` fallback paths now correctly pass `keep_alive` and extract the system turn to a dedicated `system` root field.
 
 ## [0.0.5] - 2026-02-26
 

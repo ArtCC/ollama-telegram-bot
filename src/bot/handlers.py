@@ -35,6 +35,7 @@ from src.services.ollama_client import (
     OllamaError,
     OllamaTimeoutError,
 )
+from src.services.model_orchestrator import ModelOrchestrator
 from src.utils.telegram import split_message
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ class BotHandlers:
         self._i18n = i18n
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
+        self._model_orchestrator = ModelOrchestrator(ollama_client)
         self._quick_action_map = self._build_quick_action_map()
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
@@ -212,6 +214,9 @@ class BotHandlers:
             "ui.buttons.preview",
             "files.upload_prompt",
             "files.upload_done",
+            "orchestrator.switched_model",
+            "orchestrator.task_vision",
+            "orchestrator.task_code",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -546,6 +551,21 @@ class BotHandlers:
             )
             prompt_images = None
 
+        # Orchestrate model selection for this asset type
+        model, orch_notification, vision_found = await self._orchestrate_model(
+            prompt=prompt_to_send,
+            has_images=bool(prompt_images),
+            preferred_model=model,
+            locale=locale,
+        )
+        if prompt_images and not vision_found:
+            prompt_images = None
+            orch_notification = None
+            logger.warning(
+                "answer_with_asset no_vision_model asset_id=%s using_text_descriptions",
+                asset.id,
+            )
+
         await update.effective_chat.send_action(action=ChatAction.TYPING)
         try:
             ollama_response = await self._generate_response(
@@ -594,6 +614,10 @@ class BotHandlers:
 
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        if orch_notification:
+            await update.effective_message.reply_text(
+                f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML
+            )
 
     async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Cancel any pending interaction mode (e.g. inline ask)."""
@@ -1366,14 +1390,23 @@ class BotHandlers:
         extra_turns = self._build_image_context_turns(image_assets) or None
         stored_images = [a.image_base64 for a in image_assets if a.image_base64]
         prompt_images: list[str] | None = stored_images or None
+        orch_notification: str | None = None
 
-        # If images are selected, verify the model supports vision before sending
-        if prompt_images:
-            vision_supported = await self._ollama_client.supports_vision(model)
-            logger.info("ask_files vision_supported=%s model=%s images=%d", vision_supported, model, len(prompt_images))
-            if vision_supported is False:
-                prompt_images = None  # fall back to text-only (descriptions still in extra_turns)
-                logger.warning("ask_files model=%s has no vision — dropping raw images, using text descriptions only", model)
+        # Orchestrate model selection: vision when images are attached, code/general otherwise
+        model, orch_notification, vision_found = await self._orchestrate_model(
+            prompt=user_text,
+            has_images=bool(prompt_images),
+            preferred_model=model,
+            locale=locale,
+        )
+        if prompt_images and not vision_found:
+            # No vision model available — fall back to text descriptions (already in extra_turns)
+            prompt_images = None
+            orch_notification = None
+            logger.warning(
+                "ask_files no_vision_model_found model=%s dropping images, using text descriptions",
+                model,
+            )
 
         # Doc assets augment the prompt text
         if doc_assets:
@@ -1431,6 +1464,10 @@ class BotHandlers:
 
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        if orch_notification:
+            await update.effective_message.reply_text(
+                f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML
+            )
 
     async def on_image(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update, apply_rate_limit=True):
@@ -1538,10 +1575,14 @@ class BotHandlers:
             bool(message.photo), bool(message.document),
         )
 
-        # Check vision capability before downloading or processing
-        vision_supported = await self._ollama_client.supports_vision(model)
-        logger.info("on_image vision_supported=%s model=%s", vision_supported, model)
-        if vision_supported is False:
+        # Orchestrate: auto-select vision-capable model or warn user
+        model, orch_notification, vision_found = await self._orchestrate_model(
+            prompt=user_prompt,
+            has_images=True,
+            preferred_model=model,
+            locale=locale,
+        )
+        if not vision_found:
             await message.reply_text(
                 self._warning(self._i18n.t("image.model_without_vision", locale=locale, model=model)),
                 reply_markup=self._main_keyboard(locale),
@@ -1684,6 +1725,8 @@ class BotHandlers:
 
         for chunk in split_message(ollama_response.text):
             await message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        if orch_notification:
+            await message.reply_text(f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML)
 
     async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update, apply_rate_limit=True):
@@ -1790,6 +1833,14 @@ class BotHandlers:
                 f"User request: {caption}"
             )
 
+            selected_model, orch_notification, _ = await self._orchestrate_model(
+                prompt=review_prompt,
+                has_images=False,
+                preferred_model=model,
+                locale=locale,
+            )
+            model = selected_model
+
             await update.effective_chat.send_action(action=ChatAction.TYPING)
             ollama_response = await self._generate_response(
                 user_id=user_id,
@@ -1819,6 +1870,8 @@ class BotHandlers:
 
             for chunk in split_message(ollama_response.text):
                 await message.reply_text(chunk, parse_mode=ParseMode.HTML)
+            if orch_notification:
+                await message.reply_text(f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML)
         except ValueError as error:
             logger.warning("document_unsupported user_id=%s file_name=%s error=%s", user_id, file_name, error)
             await message.reply_text(
@@ -1938,6 +1991,52 @@ class BotHandlers:
             images=prompt_images if prompt_images else None,
             keep_alive=self._keep_alive,
         )
+
+    async def _orchestrate_model(
+        self,
+        *,
+        prompt: str,
+        has_images: bool,
+        preferred_model: str,
+        locale: str,
+    ) -> tuple[str, str | None, bool]:
+        """Delegate task detection and model selection to the orchestrator.
+
+        Returns
+        -------
+        selected_model:
+            The model that should handle this request.
+        notification:
+            An HTML string to send to the user when the model was changed,
+            ``None`` if the preferred model is used as-is.
+        found_suitable:
+            ``False`` only when task=vision and no vision model is available;
+            the caller should warn the user.
+        """
+        from src.services.model_orchestrator import TASK_VISION, TASK_CODE
+
+        task = self._model_orchestrator.detect_task(prompt, has_images)
+        selected_model, changed, found_suitable = await self._model_orchestrator.select_model(
+            task, preferred_model
+        )
+        notification: str | None = None
+        if changed:
+            task_label = self._i18n.t(f"orchestrator.task_{task}", locale=locale)
+            notification = self._i18n.t(
+                "orchestrator.switched_model",
+                locale=locale,
+                model=selected_model,
+                task=task_label,
+            )
+        logger.info(
+            "orchestrate_model task=%s preferred=%s selected=%s changed=%s found_suitable=%s",
+            task,
+            preferred_model,
+            selected_model,
+            changed,
+            found_suitable,
+        )
+        return selected_model, notification, found_suitable
 
     @staticmethod
     def _select_agent(user_text: str) -> str:
