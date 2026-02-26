@@ -1,3 +1,5 @@
+# Roadmap
+
 ## Phase 1 (MVP) ✅
 
 - [x] Core bot architecture and environment-based configuration.

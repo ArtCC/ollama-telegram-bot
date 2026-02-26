@@ -10,15 +10,38 @@
   <img src="assets/ollama-telegram-bot.png" alt="Ollama Telegram Bot Avatar" width="150">
 </p>
 
-Open-source Telegram bot to chat with Ollama models running on your server.
+Open-source Telegram bot to chat with local Ollama models and Ollama Cloud from your server.
 
 ## Overview
 
-- Telegram bot with async handlers and user-friendly error responses.
-- Ollama integration with timeout, retries, and categorized failures.
-- Docker-first deployment with environment-driven configuration.
-- CI workflow for publishing container images to GHCR.
-- Text + image + document interaction mode: voice/audio messages are intentionally disabled.
+- Full conversational chat backed by local Ollama models via `/api/chat` (with `/api/generate` fallback).
+- Text, image, and document (TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX) input modes; voice/audio intentionally disabled.
+- File memory: uploaded files are persisted per user and can be injected as RAG context for any future message.
+- Web catalog browser (`/webmodels`): browse, search, and download models from `ollama.com/search` with real-time progress and cancel.
+- Local model manager: list, filter, switch, inspect, and delete installed models.
+- Live web search (`/websearch`): grounded answers synthesised by your local model from real-time web results via Ollama Cloud API.
+- Automatic model orchestrator: switches to the best local model for vision, code, or general tasks without user action.
+- Per-user access control, rate limiting, SQLite-backed preferences and conversation context.
+- Full localization (en / es / de / fr / it) with automatic Telegram language detection.
+- Docker-first deployment with fully variable-driven Compose and CI publish workflow to GHCR.
+
+## Commands
+
+| Command | Description |
+|---|---|
+| `/start` | Welcome message. |
+| `/help` | Show available commands. |
+| `/health` | Check Ollama and bot status. |
+| `/clear` | Clear conversation history for the current session. |
+| `/models [query]` | Browse and switch between installed local models. Accepts an optional filter query. |
+| `/webmodels [query]` | Browse and download models from the Ollama web catalog. Use the inline 🔍 Search button to filter interactively. |
+| `/currentmodel` | Show the model currently selected for your session. |
+| `/deletemodel <name>` | Delete a locally installed model after confirmation. |
+| `/info [model]` | Show model metadata card (family, parameters, quantization, architecture, size). Defaults to the current model. |
+| `/files` | Manage saved files: select/deselect for context, preview images, delete, or ask directly with `💬 Ask`. |
+| `/askfile <id> <question>` | Ask a question scoped to a single saved file. |
+| `/websearch <query>` | Search the live web; your local model synthesises an answer from the results. Requires `OLLAMA_API_KEY`. |
+| `/cancel` | Exit any pending interaction mode (search input, ask mode, etc.). |
 
 ## Project Structure
 
@@ -67,6 +90,7 @@ ollama-telegram-bot/
 ├── .env.example
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
+├── ROADMAP.md
 └── pyproject.toml
 ```
 
@@ -161,6 +185,32 @@ The available-model list is cached for 60 seconds; vision capability results are
 
 For Ollama Cloud without daemon `ollama signin`, set `OLLAMA_API_KEY` and keep `OLLAMA_CLOUD_BASE_URL=https://ollama.com`; `*-cloud` model requests are routed directly to cloud API.
 
+## Files Context
+
+Upload a document (TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX) or an image at any time:
+
+- Files are saved per user and selected by default for context use.
+- Identical content is deduplicated automatically (SHA-256).
+- Open `/files` to list saved files, toggle their selection, preview images, delete files, or tap `💬 Ask` to ask a question scoped to one file.
+- After pressing `💬 Ask`, send your question as a plain message. Use `/cancel` to exit without asking.
+- Use `/askfile <id> <question>` to target a specific file by ID.
+- Selected files are injected as RAG context for every subsequent model request (up to `FILES_CONTEXT_MAX_ITEMS` files and `FILES_CONTEXT_MAX_CHARS` characters).
+- For documents with a caption, the bot performs an immediate review while also saving the file.
+- For images, the original bytes are stored and re-sent to the model for follow-up questions (real pixel data, not just a description).
+- Stored assets are automatically purged after `ASSET_TTL_DAYS` days (default: 30).
+
+## Web Search
+
+`/websearch <query>` fetches live web results and uses your local model to synthesise a grounded answer:
+
+1. The bot calls `POST https://ollama.com/api/web_search` with your query.
+2. Up to 5 results (title + URL + snippet) are injected as context, truncated to ≈ 4 000 characters.
+3. Your local model generates an answer from the enriched prompt.
+4. A clickable sources list is appended below the answer.
+5. The answer and sources are saved to your conversation context so you can ask follow-up questions.
+
+Requires `OLLAMA_API_KEY`. A free [Ollama account](https://ollama.com/settings/keys) API key is sufficient.
+
 ## Docker Compose (Fully Variable-Driven)
 
 Deployment is designed to use:
@@ -221,6 +271,7 @@ The token must include at least `read:packages` permission.
 
 - [CHANGELOG.md](CHANGELOG.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [ROADMAP.md](ROADMAP.md)
 
 ## 🎨 Bot Avatar
 
