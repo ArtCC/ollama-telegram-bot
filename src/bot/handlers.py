@@ -516,15 +516,19 @@ class BotHandlers:
         agent_name = self._select_agent(prompt)
         system_instruction = self._agent_system_instruction(agent_name, locale)
 
-        # Image assets: inject analysis as prior assistant turn (avoids 'I can\'t see' refusals)
-        # Document assets: augment user prompt with text context
-        extra_turns = self._build_image_context_turns([asset])
-        if extra_turns:
+        if asset.asset_kind == "image":
+            # Pass the stored image bytes on the current user message so vision
+            # models actually see the pixels.  The text analysis is added as a
+            # prior assistant turn so text-only models still have useful context.
+            extra_turns = self._build_image_context_turns([asset])
             prompt_to_send = prompt
+            prompt_images: list[str] | None = [asset.image_base64] if asset.image_base64 else None
         else:
+            extra_turns = None
             prompt_to_send = self._augment_prompt_with_assets(
                 prompt=prompt, assets=[asset], force_single=True
             )
+            prompt_images = None
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
         try:
@@ -535,6 +539,7 @@ class BotHandlers:
                 turns=turns,
                 system_instruction=system_instruction,
                 extra_turns=extra_turns or None,
+                prompt_images=prompt_images,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -1283,8 +1288,13 @@ class BotHandlers:
         image_assets = [a for a in selected_assets if a.asset_kind == "image"]
         doc_assets = [a for a in selected_assets if a.asset_kind != "image"]
 
-        # Image assets injected as prior assistant turns; doc assets augment the prompt
-        extra_turns = self._build_image_context_turns(image_assets)
+        # Image assets: text descriptions as prior history turns (context for all models)
+        # + real image bytes attached to the current message (vision models see them directly)
+        extra_turns = self._build_image_context_turns(image_assets) or None
+        stored_images = [a.image_base64 for a in image_assets if a.image_base64]
+        prompt_images: list[str] | None = stored_images or None
+
+        # Doc assets augment the prompt text
         if doc_assets:
             prompt_to_send = self._augment_prompt_with_assets(
                 prompt=user_text, assets=doc_assets, force_single=False
@@ -1301,7 +1311,8 @@ class BotHandlers:
                 prompt=prompt_to_send,
                 turns=turns,
                 system_instruction=system_instruction,
-                extra_turns=extra_turns or None,
+                extra_turns=extra_turns,
+                prompt_images=prompt_images,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -1669,7 +1680,15 @@ class BotHandlers:
         turns: list[ConversationTurn],
         system_instruction: str,
         extra_turns: list[ConversationTurn] | None = None,
+        prompt_images: list[str] | None = None,
     ):
+        """Call Ollama and return a response.
+
+        ``extra_turns`` are injected before the real history and carry text-based
+        context (e.g. stored image descriptions, document summaries).
+        ``prompt_images`` are attached to the *current* user message as base64
+        strings — the only placement that vision models actually process.
+        """
         turns_for_model: list[ConversationTurn] = [ConversationTurn(role="system", content=system_instruction)]
         if extra_turns:
             turns_for_model.extend(extra_turns)
@@ -1682,6 +1701,7 @@ class BotHandlers:
                     prompt=prompt,
                     context_turns=turns_for_model,
                     keep_alive=self._keep_alive,
+                    prompt_images=prompt_images or None,
                 )
             except OllamaError as error:
                 logger.warning(
@@ -1875,12 +1895,11 @@ class BotHandlers:
     def _build_image_context_turns(self, assets: list[UserAsset]) -> list[ConversationTurn]:
         """Build synthetic user+assistant turn pairs for stored image assets.
 
-        Per the Ollama /api/chat spec, images are passed as base64 strings in
-        the ``images`` field of the user message object.  When the original bytes
-        are available they are re-sent so the model actually sees the pixels again
-        instead of just a text label.  The following assistant turn with the stored
-        analysis is included so the model can answer follow-up questions grounded
-        on both the actual image and the prior description.
+        These turns inject the stored text analysis as prior history so that
+        text-only models have descriptive context.  Vision models receive the
+        actual image bytes separately via ``prompt_images`` on the *current*
+        user message — Ollama only processes images in the active message, not
+        in history turns, so bytes are NOT included here.
         """
         turns: list[ConversationTurn] = []
         for asset in assets:
@@ -1889,13 +1908,10 @@ class BotHandlers:
             analysis = self._clean_image_text(asset.content_text)
             if not analysis:
                 continue
-            # Include the original image bytes when stored (Ollama API: message.images)
-            user_turn_images: list[str] | None = [asset.image_base64] if asset.image_base64 else None
             turns.append(
                 ConversationTurn(
                     role="user",
                     content=f"[Image uploaded: {asset.asset_name}]",
-                    images=user_turn_images,
                 )
             )
             turns.append(ConversationTurn(role="assistant", content=analysis))

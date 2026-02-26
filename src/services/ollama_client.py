@@ -214,9 +214,10 @@ class OllamaClient:
         keep_alive: str,
         response_format: str | dict[str, Any] | None = None,
         options: dict[str, Any] | None = None,
+        prompt_images: list[str] | None = None,
     ) -> OllamaResponse:
         started_at = monotonic()
-        messages = self._compose_messages(prompt=prompt, context_turns=context_turns)
+        messages = self._compose_messages(prompt=prompt, context_turns=context_turns, prompt_images=prompt_images)
         payload = {
             "model": model,
             "messages": messages,
@@ -581,17 +582,28 @@ class OllamaClient:
         return "\n".join(context_lines)
 
     @staticmethod
-    def _compose_messages(prompt: str, context_turns: list[ConversationTurn]) -> list[dict[str, Any]]:
+    def _compose_messages(
+        prompt: str,
+        context_turns: list[ConversationTurn],
+        prompt_images: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Build the messages list for /api/chat.
+
+        Per the Ollama spec, ``images`` are accepted per message object.
+        Vision models only process images that appear in the conversation;
+        in practice the current user turn is where images should be placed.
+        History turns carry text-only content to provide descriptive context.
+        """
         messages: list[dict[str, Any]] = []
         for turn in context_turns:
             if turn.role not in {"system", "user", "assistant", "tool"}:
                 continue
-            msg: dict[str, Any] = {"role": turn.role, "content": turn.content}
-            if turn.images:
-                msg["images"] = turn.images
-            messages.append(msg)
+            messages.append({"role": turn.role, "content": turn.content})
 
-        messages.append({"role": "user", "content": prompt})
+        current_msg: dict[str, Any] = {"role": "user", "content": prompt}
+        if prompt_images:
+            current_msg["images"] = prompt_images
+        messages.append(current_msg)
         return messages
 
     @staticmethod
