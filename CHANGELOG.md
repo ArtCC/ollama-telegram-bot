@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.6] - 2026-02-26
+
+### Added
+- Added paginated `/models` browsing with inline previous/next navigation buttons.
+- Added `/models <query>` filtering support to search available models by name.
+
 ## [0.0.5] - 2026-02-26
 
 ### Added

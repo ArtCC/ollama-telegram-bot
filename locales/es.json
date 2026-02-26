@@ -16,6 +16,8 @@
       "open_models": "🧠 Abrir modelos",
       "use_default": "♻️ Usar predeterminado",
       "refresh": "🔄 Actualizar",
+      "prev_page": "⬅️ Anterior",
+      "next_page": "Siguiente ➡️",
       "refresh_models": "Actualizar modelos",
       "confirm": "✅ Confirmar",
       "cancel": "❌ Cancelar"
@@ -55,6 +57,8 @@
     "reset_default": "Modelo restablecido al predeterminado: {model}",
     "not_found": "Modelo no encontrado. Usa /models para ver los nombres disponibles.",
     "not_available_anymore": "El modelo ya no está disponible. Usa /models para actualizar la lista.",
+    "no_matches": "No hay modelos que coincidan con tu búsqueda. Prueba otro término.",
+    "page_status": "Página {page}/{pages}",
     "no_models_available": "Ahora mismo no hay modelos disponibles en Ollama."
   },
   "image": {

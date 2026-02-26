@@ -98,6 +98,7 @@ ollama-telegram-bot/
 - [x] Optional cloud-ready Ollama auth configuration (`OLLAMA_API_KEY`, `OLLAMA_AUTH_SCHEME`).
 - [x] Localization support with user Telegram language resolution and English fallback.
 - [x] Locale files available for `en`, `es`, `de`, `fr`, and `it`.
+- [x] `/models` model browser with inline pagination (previous/next) and name filtering via `/models <query>`.
 
 ## Configuration
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from time import monotonic
 from typing import Any
@@ -374,6 +375,17 @@ class OllamaClient:
                     len(context_turns),
                     elapsed_ms,
                 )
+                if self._looks_like_missing_image_response(text):
+                    logger.warning(
+                        "ollama_chat_image_suspect_no_image model=%s fallback=generate_with_image",
+                        model,
+                    )
+                    return await self._generate_with_image(
+                        model=model,
+                        prompt=prompt,
+                        image_base64=image_base64,
+                        context_turns=context_turns,
+                    )
                 return OllamaResponse(text=text)
             except httpx.TimeoutException as error:
                 last_error = error
@@ -389,6 +401,18 @@ class OllamaClient:
                 raise OllamaConnectionError("Could not reach Ollama") from error
             except httpx.HTTPStatusError as error:
                 detail = error.response.text[:300]
+                if error.response.status_code in {400, 404, 422}:
+                    logger.warning(
+                        "ollama_chat_image_http_fallback_generate model=%s status=%d",
+                        model,
+                        error.response.status_code,
+                    )
+                    return await self._generate_with_image(
+                        model=model,
+                        prompt=prompt,
+                        image_base64=image_base64,
+                        context_turns=context_turns,
+                    )
                 raise OllamaError(
                     f"Ollama returned HTTP {error.response.status_code}: {detail}"
                 ) from error
@@ -396,6 +420,84 @@ class OllamaClient:
         if last_error:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
+
+    async def _generate_with_image(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        image_base64: str,
+        context_turns: list[ConversationTurn],
+    ) -> OllamaResponse:
+        started_at = monotonic()
+        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=context_turns)
+        payload = {
+            "model": model,
+            "prompt": composed_prompt,
+            "images": [image_base64],
+            "stream": False,
+        }
+
+        last_error: Exception | None = None
+        for attempt in range(self._retries + 1):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    headers=self._request_headers(model),
+                ) as client:
+                    response = await client.post(
+                        f"{self._target_base_url(model)}/api/generate",
+                        json=payload,
+                    )
+                response.raise_for_status()
+                data = response.json()
+                text = str(data.get("response", "")).strip()
+                if not text:
+                    raise OllamaError("Empty image generate response from Ollama")
+
+                elapsed_ms = int((monotonic() - started_at) * 1000)
+                logger.info(
+                    "ollama_generate_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d",
+                    model,
+                    len(prompt),
+                    len(context_turns),
+                    elapsed_ms,
+                )
+                return OllamaResponse(text=text)
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaTimeoutError("Ollama image generate request timed out") from error
+            except httpx.RequestError as error:
+                last_error = error
+                if attempt < self._retries:
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaConnectionError("Could not reach Ollama") from error
+            except httpx.HTTPStatusError as error:
+                detail = error.response.text[:300]
+                raise OllamaError(
+                    f"Ollama returned HTTP {error.response.status_code}: {detail}"
+                ) from error
+
+        if last_error:
+            raise OllamaError("Unexpected Ollama failure") from last_error
+        raise OllamaError("Unexpected Ollama failure")
+
+    @staticmethod
+    def _looks_like_missing_image_response(text: str) -> bool:
+        normalized = text.strip().lower()
+        if not normalized:
+            return False
+
+        patterns = (
+            r"\b(send|upload|attach|provide)\b.{0,30}\b(image|photo|picture)\b",
+            r"\b(can(?:not|'t)\s+see|don't\s+see|no)\b.{0,30}\b(image|photo|picture)\b",
+            r"\bplease\b.{0,20}\b(image|photo|picture)\b",
+        )
+        return any(re.search(pattern, normalized) for pattern in patterns)
 
     @staticmethod
     def _compose_prompt(prompt: str, context_turns: list[ConversationTurn]) -> str:

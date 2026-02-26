@@ -42,10 +42,12 @@ MODEL_CALLBACK_PREFIX = "model:"
 CLEAR_CALLBACK_PREFIX = "clear:"
 MODEL_REFRESH_ACTION = "__refresh__"
 MODEL_DEFAULT_ACTION = "__default__"
+MODEL_PAGE_ACTION_PREFIX = "__page__:"
 ICON_INFO = "ℹ️"
 ICON_SUCCESS = "✅"
 ICON_WARNING = "⚠️"
 ICON_ERROR = "❌"
+MODELS_PAGE_SIZE = 8
 
 
 class BotHandlers:
@@ -77,6 +79,7 @@ class BotHandlers:
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
         self._quick_action_map = self._build_quick_action_map()
+        self._model_search_query_by_user: dict[int, str] = {}
 
     @staticmethod
     def required_i18n_keys() -> tuple[str, ...]:
@@ -95,6 +98,8 @@ class BotHandlers:
             "ui.buttons.use_default",
             "ui.buttons.refresh",
             "ui.buttons.refresh_models",
+            "ui.buttons.prev_page",
+            "ui.buttons.next_page",
             "ui.buttons.confirm",
             "ui.buttons.cancel",
             "ui.input_placeholder",
@@ -122,6 +127,8 @@ class BotHandlers:
             "models.current_marker",
             "models.select_with",
             "models.tap_button",
+            "models.no_matches",
+            "models.page_status",
             "models.updated",
             "models.reset_default",
             "models.not_found",
@@ -355,15 +362,36 @@ class BotHandlers:
             return
 
         current_model = self._get_user_model(user_id)
+        search_query = requested_model if requested_model else ""
+        self._model_search_query_by_user[user_id] = search_query
+
+        filtered_models = self._filter_models(models, search_query)
+        if not filtered_models:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("models.no_matches", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page = 1
+        page_models, total_pages = self._paginate_models(filtered_models, page)
+
         lines = [self._info(self._i18n.t("models.available_title", locale=locale))]
-        for model in models:
+        for model in page_models:
             marker = self._i18n.t("models.current_marker", locale=locale) if model == current_model else ""
             lines.append(f"- {model}{marker}")
         lines.append("")
+        lines.append(self._i18n.t("models.page_status", locale=locale, page=page, pages=total_pages))
         lines.append(self._i18n.t("models.select_with", locale=locale))
         lines.append(self._i18n.t("models.tap_button", locale=locale))
 
-        inline_keyboard = self._models_inline_keyboard(locale, models, current_model)
+        inline_keyboard = self._models_inline_keyboard(
+            locale,
+            models=page_models,
+            current_model=current_model,
+            page=page,
+            total_pages=total_pages,
+        )
         await update.effective_message.reply_text(
             "\n".join(lines),
             reply_markup=inline_keyboard,
@@ -424,6 +452,13 @@ class BotHandlers:
 
         if selected_model == MODEL_REFRESH_ACTION:
             await self.models(update, context)
+            return
+
+        if selected_model.startswith(MODEL_PAGE_ACTION_PREFIX):
+            page_raw = selected_model.removeprefix(MODEL_PAGE_ACTION_PREFIX).strip()
+            if not page_raw.isdigit():
+                return
+            await self._show_models_page(update, int(page_raw))
             return
 
         user_id = update.effective_user.id
@@ -491,6 +526,69 @@ class BotHandlers:
         await query.message.reply_text(
             self._success(self._i18n.t("models.updated", locale=locale, model=selected_model)),
             reply_markup=self._main_keyboard(locale),
+        )
+
+    async def _show_models_page(self, update: Update, page: int) -> None:
+        query = update.callback_query
+        if not query or not update.effective_user or not query.message:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+
+        try:
+            models = await self._ollama_client.list_models()
+        except OllamaTimeoutError:
+            await query.message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await query.message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama error while paginating models: %s", error)
+            await query.message.reply_text(
+                self._error(self._i18n.t("errors.ollama_list_models", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        search_query = self._model_search_query_by_user.get(user_id, "")
+        filtered_models = self._filter_models(models, search_query)
+        if not filtered_models:
+            await query.message.reply_text(
+                self._warning(self._i18n.t("models.no_matches", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page_models, total_pages = self._paginate_models(filtered_models, page)
+        safe_page = min(max(page, 1), total_pages)
+        current_model = self._get_user_model(user_id)
+
+        lines = [self._info(self._i18n.t("models.available_title", locale=locale))]
+        for model in page_models:
+            marker = self._i18n.t("models.current_marker", locale=locale) if model == current_model else ""
+            lines.append(f"- {model}{marker}")
+        lines.append("")
+        lines.append(self._i18n.t("models.page_status", locale=locale, page=safe_page, pages=total_pages))
+        lines.append(self._i18n.t("models.select_with", locale=locale))
+        lines.append(self._i18n.t("models.tap_button", locale=locale))
+
+        await query.message.reply_text(
+            "\n".join(lines),
+            reply_markup=self._models_inline_keyboard(
+                locale,
+                models=page_models,
+                current_model=current_model,
+                page=safe_page,
+                total_pages=total_pages,
+            ),
         )
 
     async def current_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1116,11 +1214,29 @@ class BotHandlers:
         labels = sorted({re.escape(label) for label in self._quick_action_map})
         return rf"^({'|'.join(labels)})$"
 
+    def _filter_models(self, models: list[str], query: str) -> list[str]:
+        search = query.strip().lower()
+        if not search:
+            return models
+        return [model for model in models if search in model.lower()]
+
+    def _paginate_models(self, models: list[str], page: int) -> tuple[list[str], int]:
+        if not models:
+            return [], 1
+
+        total_pages = max(1, (len(models) + MODELS_PAGE_SIZE - 1) // MODELS_PAGE_SIZE)
+        safe_page = min(max(page, 1), total_pages)
+        start = (safe_page - 1) * MODELS_PAGE_SIZE
+        end = start + MODELS_PAGE_SIZE
+        return models[start:end], total_pages
+
     def _models_inline_keyboard(
         self,
         locale: str,
         models: list[str],
         current_model: str,
+        page: int = 1,
+        total_pages: int = 1,
     ) -> InlineKeyboardMarkup:
         rows: list[list[InlineKeyboardButton]] = []
         row: list[InlineKeyboardButton] = []
@@ -1139,6 +1255,25 @@ class BotHandlers:
 
         if row:
             rows.append(row)
+
+        if total_pages > 1:
+            nav_row: list[InlineKeyboardButton] = []
+            if page > 1:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.prev_page", locale=locale),
+                        callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_PAGE_ACTION_PREFIX}{page - 1}",
+                    )
+                )
+            if page < total_pages:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.next_page", locale=locale),
+                        callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_PAGE_ACTION_PREFIX}{page + 1}",
+                    )
+                )
+            if nav_row:
+                rows.append(nav_row)
 
         if not rows:
             rows = [
