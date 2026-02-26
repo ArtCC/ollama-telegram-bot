@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.5] - 2026-02-26
+
+### Added
+- Added `OLLAMA_CLOUD_BASE_URL` runtime configuration to route `*-cloud` model requests directly to cloud API endpoints.
+- Added cloud-model selection fallback so `*-cloud` models can be selected even if they are not listed by local `/api/tags`.
+
+### Changed
+- Changed image handling flow to always attempt model inference and rely on Ollama runtime response instead of pre-blocking with capability checks.
+- Updated configuration/docs for cloud usage without daemon-level `ollama signin`.
+
 ## [0.0.4] - 2026-02-16
 
 ### Added
