@@ -53,18 +53,21 @@ def main() -> None:
     )
 
     logger.info(
-        "startup_ollama base_url=%s default_model=%s use_chat_api=%s keep_alive=%s timeout_s=%d",
+        "startup_ollama base_url=%s default_model=%s use_chat_api=%s keep_alive=%s timeout_s=%d cloud_auth=%s",
         settings.ollama_base_url,
         settings.ollama_default_model,
         settings.ollama_use_chat_api,
         settings.ollama_keep_alive,
         settings.request_timeout_seconds,
+        settings.ollama_api_key is not None,
     )
 
     logger.info(
-        "startup_runtime max_context_messages=%d image_max_bytes=%d allowed_users=%d",
+        "startup_runtime max_context_messages=%d image_max_bytes=%d document_max_bytes=%d document_max_chars=%d allowed_users=%d",
         settings.max_context_messages,
         settings.image_max_bytes,
+        settings.document_max_bytes,
+        settings.document_max_chars,
         len(settings.allowed_user_ids),
     )
 
@@ -76,6 +79,8 @@ def main() -> None:
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,
         timeout_seconds=settings.request_timeout_seconds,
+        api_key=settings.ollama_api_key,
+        auth_scheme=settings.ollama_auth_scheme,
     )
 
     handlers = BotHandlers(
@@ -86,6 +91,8 @@ def main() -> None:
         use_chat_api=settings.ollama_use_chat_api,
         keep_alive=settings.ollama_keep_alive,
         image_max_bytes=settings.image_max_bytes,
+        document_max_bytes=settings.document_max_bytes,
+        document_max_chars=settings.document_max_chars,
         i18n=i18n,
         allowed_user_ids=set(settings.allowed_user_ids),
         rate_limiter=(

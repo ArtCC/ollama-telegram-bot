@@ -110,3 +110,34 @@ def test_load_settings_rejects_empty_default_locale(monkeypatch: pytest.MonkeyPa
 
     with pytest.raises(ValueError, match="BOT_DEFAULT_LOCALE"):
         load_settings()
+
+
+def test_load_settings_cloud_auth_defaults() -> None:
+    settings = load_settings()
+
+    assert settings.ollama_api_key is None
+    assert settings.ollama_auth_scheme == "Bearer"
+
+
+def test_load_settings_cloud_auth_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_API_KEY", "abc123")
+    monkeypatch.setenv("OLLAMA_AUTH_SCHEME", "Token")
+
+    settings = load_settings()
+
+    assert settings.ollama_api_key == "abc123"
+    assert settings.ollama_auth_scheme == "Token"
+
+
+def test_load_settings_rejects_invalid_document_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DOCUMENT_MAX_BYTES", "100")
+
+    with pytest.raises(ValueError, match="DOCUMENT_MAX_BYTES"):
+        load_settings()
+
+
+def test_load_settings_document_limits_defaults() -> None:
+    settings = load_settings()
+
+    assert settings.document_max_bytes == 10 * 1024 * 1024
+    assert settings.document_max_chars == 12000

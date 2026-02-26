@@ -11,6 +11,9 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added full French locale file `locales/fr.json`.
 - Added full Italian locale file `locales/it.json`.
 - Added startup diagnostics logging for container bootstrap (i18n locales, storage, Ollama config and runtime limits).
+- Added document ingestion and review support using the selected model (TXT/MD/CSV/JSON and PDF).
+- Added document limits configuration with `DOCUMENT_MAX_BYTES` and `DOCUMENT_MAX_CHARS`.
+- Added optional Ollama cloud/auth configuration using `OLLAMA_API_KEY` and `OLLAMA_AUTH_SCHEME`.
 
 ### Fixed
 - Included the `locales/` directory in Docker image build to prevent startup failures in containers.

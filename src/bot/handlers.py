@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import logging
 import re
 from time import monotonic
@@ -57,6 +58,8 @@ class BotHandlers:
         use_chat_api: bool,
         keep_alive: str,
         image_max_bytes: int,
+        document_max_bytes: int,
+        document_max_chars: int,
         i18n: I18nService,
         allowed_user_ids: set[int] | None = None,
         rate_limiter: SlidingWindowRateLimiter | None = None,
@@ -68,6 +71,8 @@ class BotHandlers:
         self._use_chat_api = use_chat_api
         self._keep_alive = keep_alive
         self._image_max_bytes = image_max_bytes
+        self._document_max_bytes = document_max_bytes
+        self._document_max_chars = document_max_chars
         self._i18n = i18n
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
@@ -128,6 +133,11 @@ class BotHandlers:
             "image.invalid_file",
             "image.processing_error",
             "image.read_error",
+            "document.added",
+            "document.too_large",
+            "document.unsupported",
+            "document.empty",
+            "document.processing_error",
             "errors.ollama_timeout",
             "errors.ollama_connection",
             "errors.ollama_list_models",
@@ -728,6 +738,149 @@ class BotHandlers:
         for chunk in split_message(ollama_response.text):
             await message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
+    async def on_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update, apply_rate_limit=True):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        locale = self._locale(update)
+        message = update.effective_message
+        document = message.document
+        if not document:
+            return
+
+        user_id = update.effective_user.id
+        file_name = document.file_name or "document"
+        file_size = int(document.file_size or 0)
+        mime_type = (document.mime_type or "").lower()
+
+        if file_size > self._document_max_bytes:
+            await message.reply_text(
+                self._warning(
+                    self._i18n.t(
+                        "document.too_large",
+                        locale=locale,
+                        max_size=self._format_size(self._document_max_bytes),
+                    )
+                ),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        try:
+            telegram_file = await document.get_file()
+            raw_bytes = bytes(await telegram_file.download_as_bytearray())
+            if len(raw_bytes) > self._document_max_bytes:
+                await message.reply_text(
+                    self._warning(
+                        self._i18n.t(
+                            "document.too_large",
+                            locale=locale,
+                            max_size=self._format_size(self._document_max_bytes),
+                        )
+                    ),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            extracted_text = self._extract_document_text(
+                content=raw_bytes,
+                mime_type=mime_type,
+                file_name=file_name,
+            )
+            if not extracted_text.strip():
+                await message.reply_text(
+                    self._warning(self._i18n.t("document.empty", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            trimmed_text = self._trim_document_text(extracted_text)
+            caption = (message.caption or "").strip()
+
+            if not caption:
+                self._context_store.append(
+                    user_id,
+                    role="user",
+                    content=f"[Document: {file_name}]\n{trimmed_text}",
+                )
+                await message.reply_text(
+                    self._success(self._i18n.t("document.added", locale=locale, name=file_name)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            turns = self._context_store.get_turns(user_id)
+            model = self._get_user_model(user_id)
+            agent_name = self._select_agent(caption)
+            system_instruction = self._agent_system_instruction(agent_name, locale)
+            started_at = monotonic()
+
+            review_prompt = (
+                f"Document name: {file_name}\n\n"
+                f"Document content:\n{trimmed_text}\n\n"
+                f"User request: {caption}"
+            )
+
+            await update.effective_chat.send_action(action=ChatAction.TYPING)
+            ollama_response = await self._generate_response(
+                user_id=user_id,
+                model=model,
+                prompt=review_prompt,
+                turns=turns,
+                system_instruction=system_instruction,
+            )
+
+            self._context_store.append(
+                user_id,
+                role="user",
+                content=f"[Document review: {file_name}] {caption}",
+            )
+            self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+
+            elapsed_ms = int((monotonic() - started_at) * 1000)
+            logger.info(
+                "document_review_completed user_id=%s model=%s file_name=%s input_chars=%d output_chars=%d elapsed_ms=%d",
+                user_id,
+                model,
+                file_name,
+                len(review_prompt),
+                len(ollama_response.text),
+                elapsed_ms,
+            )
+
+            for chunk in split_message(ollama_response.text):
+                await message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        except ValueError as error:
+            logger.warning("document_unsupported user_id=%s file_name=%s error=%s", user_id, file_name, error)
+            await message.reply_text(
+                self._warning(self._i18n.t("document.unsupported", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+        except OllamaTimeoutError:
+            await message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+        except OllamaConnectionError:
+            await message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+        except OllamaError as error:
+            logger.warning("document_ollama_error user_id=%s file_name=%s error=%s", user_id, file_name, error)
+            await message.reply_text(
+                self._error(self._i18n.t("document.processing_error", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+        except Exception as error:
+            logger.warning("document_processing_failed user_id=%s file_name=%s error=%s", user_id, file_name, error)
+            await message.reply_text(
+                self._error(self._i18n.t("document.processing_error", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+
     async def on_voice_or_audio(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
@@ -889,6 +1042,52 @@ class BotHandlers:
         mib = num_bytes / (1024 * 1024)
         return f"{mib:.1f} MB"
 
+    def _trim_document_text(self, text: str) -> str:
+        cleaned = text.strip()
+        if len(cleaned) <= self._document_max_chars:
+            return cleaned
+        return f"{cleaned[:self._document_max_chars]}\n\n[...truncated...]"
+
+    @staticmethod
+    def _extract_document_text(*, content: bytes, mime_type: str, file_name: str) -> str:
+        suffix = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+        text_extensions = {
+            "txt",
+            "md",
+            "markdown",
+            "csv",
+            "json",
+            "xml",
+            "yml",
+            "yaml",
+            "log",
+            "py",
+            "js",
+            "ts",
+            "java",
+            "c",
+            "cpp",
+            "html",
+            "css",
+            "sql",
+            "rst",
+        }
+
+        if mime_type.startswith("text/") or suffix in text_extensions:
+            return content.decode("utf-8", errors="replace")
+
+        if mime_type == "application/pdf" or suffix == "pdf":
+            try:
+                from pypdf import PdfReader
+            except Exception as error:
+                raise ValueError("PDF extraction requires pypdf") from error
+
+            reader = PdfReader(io.BytesIO(content))
+            pages_text = [page.extract_text() or "" for page in reader.pages]
+            return "\n\n".join(pages_text)
+
+        raise ValueError(f"Unsupported document format: {mime_type or suffix or 'unknown'}")
+
     def _locale(self, update: Update) -> str:
         language_code = update.effective_user.language_code if update.effective_user else None
         return self._i18n.resolve_locale(language_code)
@@ -1014,5 +1213,8 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     )
     application.add_handler(
         MessageHandler(filters.PHOTO | filters.Document.IMAGE, handlers.on_image)
+    )
+    application.add_handler(
+        MessageHandler(filters.Document.ALL & ~filters.Document.IMAGE, handlers.on_document)
     )
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.on_text))

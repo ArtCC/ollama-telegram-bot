@@ -35,12 +35,21 @@ class OllamaClient:
         self,
         base_url: str,
         timeout_seconds: int,
+        api_key: str | None = None,
+        auth_scheme: str = "Bearer",
         retries: int = 2,
     ) -> None:
         self._base_url = base_url
         self._timeout = timeout_seconds
         self._retries = retries
+        self._api_key = api_key
+        self._auth_scheme = auth_scheme
         self._vision_capability_cache: dict[str, bool] = {}
+
+    def _request_headers(self) -> dict[str, str] | None:
+        if not self._api_key:
+            return None
+        return {"Authorization": f"{self._auth_scheme} {self._api_key}"}
 
     async def generate(
         self,
@@ -60,7 +69,7 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
                     response = await client.post(f"{self._base_url}/api/generate", json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -141,7 +150,7 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
                     response = await client.post(f"{self._base_url}/api/chat", json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -205,7 +214,7 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
                     response = await client.get(f"{self._base_url}/api/tags")
                 response.raise_for_status()
                 data = response.json()
@@ -253,17 +262,37 @@ class OllamaClient:
             return self._vision_capability_cache[model]
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
                 response = await client.post(
                     f"{self._base_url}/api/show",
                     json={"model": model},
                 )
             response.raise_for_status()
             data = response.json()
-            capabilities = data.get("capabilities", [])
-            supports_vision = isinstance(capabilities, list) and "vision" in capabilities
-            self._vision_capability_cache[model] = supports_vision
-            return supports_vision
+            capabilities = data.get("capabilities")
+
+            if isinstance(capabilities, list):
+                normalized = {str(item).strip().lower() for item in capabilities}
+                if "vision" in normalized:
+                    self._vision_capability_cache[model] = True
+                    return True
+                if normalized:
+                    self._vision_capability_cache[model] = False
+                    return False
+
+            model_info = data.get("model_info") if isinstance(data, dict) else None
+            if isinstance(model_info, dict):
+                model_info_keys = " ".join(model_info.keys()).lower()
+                if "vision" in model_info_keys or "clip" in model_info_keys:
+                    self._vision_capability_cache[model] = True
+                    return True
+
+            logger.info(
+                "ollama_show_capabilities_unknown model=%s payload_keys=%s",
+                model,
+                ",".join(sorted(data.keys())) if isinstance(data, dict) else "n/a",
+            )
+            return None
         except Exception as error:
             logger.warning("ollama_show_capabilities_failed model=%s error=%s", model, error)
             return None
@@ -293,7 +322,7 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
                     response = await client.post(f"{self._base_url}/api/chat", json=payload)
                 response.raise_for_status()
                 data = response.json()

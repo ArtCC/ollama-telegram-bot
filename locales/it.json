@@ -65,6 +65,13 @@
     "processing_error": "Non sono riuscito a elaborare questa immagine con il modello attuale. Prova un altro modello in /models.",
     "read_error": "Non sono riuscito a leggere questo file immagine. Invia nuovamente un’immagine JPG/PNG valida."
   },
+  "document": {
+    "added": "Documento aggiunto al contesto: {name}. Ora puoi chiedermi qualsiasi cosa su di esso.",
+    "too_large": "Il documento è troppo grande. La dimensione massima consentita è {max_size}.",
+    "unsupported": "Formato documento non supportato. Invia TXT/MD/CSV/JSON o PDF.",
+    "empty": "Non sono riuscito a estrarre testo leggibile da questo documento.",
+    "processing_error": "Non sono riuscito a elaborare questo documento in questo momento. Riprova."
+  },
   "errors": {
     "ollama_timeout": "Ollama sta impiegando troppo tempo a rispondere. Riprova tra poco.",
     "ollama_connection": "Non sono riuscito a connettermi a Ollama. Contatta l’amministratore del bot.",
