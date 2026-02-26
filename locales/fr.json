@@ -8,6 +8,7 @@
     "webmodels": "Parcourir les modèles web installables",
     "files": "Lister vos fichiers enregistrés",
     "askfile": "Poser une question avec un fichier",
+    "cancel": "Annuler le mode actuel",
     "currentmodel": "Afficher votre modèle actuel"
   },
   "ui": {
@@ -36,6 +37,8 @@
     "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/files - Gérer vos documents et images enregistrés\n/askfile - Poser une question sur un fichier précis : /askfile <id> <question>\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
     "askfile_prompt": "Envoyez maintenant votre question pour le fichier #{id} ({name}).",
     "askfile_usage": "Utilisation : /askfile <id_fichier> <question>. Exemple : /askfile 12 Résume ce fichier.",
+    "cancel_ask_done": "Mode question annulé. Vous pouvez continuer normalement.",
+    "cancel_nothing": "Il n'y a rien à annuler pour l'instant.",
     "please_send_non_empty": "Veuillez envoyer un message non vide.",
     "voice_disabled": "Les messages vocaux et audio sont désactivés. Veuillez envoyer des messages texte ou des images.",
     "clear_confirm": "<b>Effacer le contexte ?</b>\nCela supprimera votre mémoire de chat actuelle.",
@@ -87,7 +90,7 @@
     "no_models_available": "Aucun modèle web n’est actuellement disponible."
   },
   "image": {
-    "default_prompt": "Décrivez l’image et extrayez tout texte visible s’il y en a.",
+    "default_prompt": "Décrivez cette image en détail : identifiez tous les objets visibles, personnes, textes, panneaux, couleurs et le contexte général ou la scène.",
     "model_without_vision": "Votre modèle actuel ({model}) ne prend pas en charge les images. Utilisez /models pour choisir un modèle de vision.",
     "too_large": "L’image est trop volumineuse. La taille maximale autorisée est de {max_size}.",
     "invalid_file": "Veuillez envoyer un fichier image valide.",
@@ -95,9 +98,9 @@
     "read_error": "Je n’ai pas pu lire ce fichier image. Veuillez le renvoyer au format JPG/PNG valide."
   },
   "document": {
-    "added": "Document ajouté au contexte : {name}. Vous pouvez maintenant me poser des questions dessus.",
+    "added": "Document enregistré sous le fichier #{id} : {name}.\nPosez-moi des questions dessus ou utilisez /askfile {id} <question>.",
     "too_large": "Le document est trop volumineux. La taille maximale autorisée est de {max_size}.",
-    "unsupported": "Format de document non pris en charge. Envoyez TXT/MD/CSV/JSON ou PDF.",
+    "unsupported": "Format de document non pris en charge. Formats pris en charge : TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX.",
     "empty": "Je n’ai pas pu extraire de texte lisible de ce document.",
     "processing_error": "Je n’ai pas pu traiter ce document pour le moment. Veuillez réessayer."
   },

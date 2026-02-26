@@ -8,6 +8,7 @@
     "webmodels": "Browse installable web models",
     "files": "List your saved files",
     "askfile": "Ask using one file",
+    "cancel": "Cancel current mode",
     "currentmodel": "Show your current model"
   },
   "ui": {
@@ -36,6 +37,8 @@
     "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/askfile - Ask using one specific file: /askfile <id> <question>\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
     "askfile_prompt": "Now send your question for file #{id} ({name}).",
     "askfile_usage": "Usage: /askfile <file_id> <question>. Example: /askfile 12 Summarize this file.",
+    "cancel_ask_done": "Ask mode cancelled. You can continue normally.",
+    "cancel_nothing": "There is nothing to cancel right now.",
     "please_send_non_empty": "Please send a non-empty message.",
     "voice_disabled": "Voice and audio messages are disabled. Please send text or image messages.",
     "clear_confirm": "<b>Clear context?</b>\nThis will remove your current chat memory.",
@@ -87,7 +90,7 @@
     "no_models_available": "No web models are currently available."
   },
   "image": {
-    "default_prompt": "Describe the image and extract any visible text if present.",
+    "default_prompt": "Describe this image in detail: identify all visible objects, people, text, signs, colours, and the overall context or scene.",
     "model_without_vision": "Your current model ({model}) does not support images. Use /models to choose a vision model.",
     "too_large": "Image is too large. Maximum allowed size is {max_size}.",
     "invalid_file": "Please send a valid image file.",
@@ -95,9 +98,9 @@
     "read_error": "I could not read this image file. Please resend it as a valid JPG/PNG image."
   },
   "document": {
-    "added": "Document added to context: {name}. Ask me anything about it.",
+    "added": "Document saved as file #{id}: {name}.\nAsk me anything about it or use /askfile {id} <question>.",
     "too_large": "Document is too large. Maximum allowed size is {max_size}.",
-    "unsupported": "Unsupported document format. Send TXT/MD/CSV/JSON or PDF.",
+    "unsupported": "Unsupported document format. Supported formats: TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX.",
     "empty": "I could not extract readable text from this document.",
     "processing_error": "I could not process this document right now. Please try again."
   },

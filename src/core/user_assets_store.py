@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -50,6 +51,17 @@ class UserAssetsStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_user_assets_user_id_id ON user_assets(user_id, id DESC)"
             )
+            # Schema migration: add content_hash column for deduplication
+            try:
+                connection.execute(
+                    "ALTER TABLE user_assets ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"
+                )
+                connection.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_user_assets_content_hash "
+                    "ON user_assets(user_id, content_hash)"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             connection.commit()
 
     def add_asset(
@@ -63,7 +75,15 @@ class UserAssetsStore:
         content_text: str,
         is_selected: bool = True,
     ) -> int:
+        content_hash = self._compute_hash(content_text)
         with self._connect() as connection:
+            # Deduplication: return existing asset ID if content already stored
+            existing = connection.execute(
+                "SELECT id FROM user_assets WHERE user_id = ? AND content_hash = ? LIMIT 1",
+                (user_id, content_hash),
+            ).fetchone()
+            if existing:
+                return int(existing[0])
             cursor = connection.execute(
                 """
                 INSERT INTO user_assets (
@@ -73,8 +93,9 @@ class UserAssetsStore:
                     mime_type,
                     size_bytes,
                     content_text,
-                    is_selected
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    is_selected,
+                    content_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -84,6 +105,7 @@ class UserAssetsStore:
                     size_bytes,
                     content_text,
                     1 if is_selected else 0,
+                    content_hash,
                 ),
             )
             connection.commit()
@@ -136,6 +158,16 @@ class UserAssetsStore:
             connection.commit()
             return cursor.rowcount > 0
 
+    def purge_expired_assets(self, ttl_days: int) -> int:
+        """Delete assets older than ttl_days days. Returns number of deleted rows."""
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "DELETE FROM user_assets WHERE datetime(created_at) < datetime('now', ?)",
+                (f"-{ttl_days} days",),
+            )
+            connection.commit()
+            return cursor.rowcount
+
     def search_selected_assets(
         self,
         *,
@@ -143,30 +175,42 @@ class UserAssetsStore:
         query: str,
         limit: int,
         max_chars_total: int,
+        asset_kinds: set[str] | None = None,
     ) -> list[UserAsset]:
-        assets = [asset for asset in self.list_assets(user_id) if asset.is_selected and asset.content_text.strip()]
+        assets = [
+            asset for asset in self.list_assets(user_id)
+            if asset.is_selected
+            and asset.content_text.strip()
+            and (asset_kinds is None or asset.asset_kind in asset_kinds)
+        ]
         if not assets:
             return []
 
         tokens = self._tokenize(query)
         if tokens:
             scored: list[tuple[int, UserAsset]] = []
+            unscored: list[UserAsset] = []
             for asset in assets:
                 lowered = asset.content_text.lower()
                 score = sum(lowered.count(token) for token in tokens)
                 if score > 0:
                     scored.append((score, asset))
-            if scored:
-                scored.sort(key=lambda item: (item[0], item[1].id), reverse=True)
-                selected_assets = [item[1] for item in scored[:limit]]
-            else:
-                selected_assets = assets[:limit]
+                else:
+                    unscored.append(asset)
+            scored.sort(key=lambda item: (item[0], item[1].id), reverse=True)
+            selected_assets: list[UserAsset] = [item[1] for item in scored[:limit]]
+            # Fill remaining slots with unscored assets (recency order)
+            remaining_slots = limit - len(selected_assets)
+            if remaining_slots > 0:
+                selected_assets.extend(unscored[:remaining_slots])
         else:
             selected_assets = assets[:limit]
 
+        # Budget: allocate proportionally based on actual asset count (not limit cap)
+        actual_count = len(selected_assets)
         total = 0
         clipped: list[UserAsset] = []
-        per_asset_cap = max(800, max_chars_total // max(1, limit))
+        per_asset_cap = max(800, max_chars_total // max(1, actual_count))
         for asset in selected_assets:
             text = asset.content_text.strip()
             if len(text) > per_asset_cap:
@@ -199,6 +243,10 @@ class UserAssetsStore:
     @staticmethod
     def _tokenize(text: str) -> list[str]:
         return [token for token in re.findall(r"\w+", text.lower()) if len(token) >= 3]
+
+    @staticmethod
+    def _compute_hash(text: str) -> str:
+        return hashlib.sha256(text.encode()).hexdigest()
 
     @staticmethod
     def _to_asset(row: tuple[object, ...]) -> UserAsset:

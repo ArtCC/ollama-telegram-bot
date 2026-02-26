@@ -8,6 +8,7 @@
     "webmodels": "Explorar modelos web instalables",
     "files": "Listar tus archivos guardados",
     "askfile": "Preguntar usando un archivo",
+    "cancel": "Cancelar el modo actual",
     "currentmodel": "Mostrar tu modelo actual"
   },
   "ui": {
@@ -36,6 +37,8 @@
     "help": "ℹ️ Comandos disponibles:\n/start - Iniciar el bot\n/help - Mostrar esta ayuda\n/health - Comprobar estado de ejecución, base de datos y Ollama\n/clear - Borrar tu contexto\n/models - Listar modelos locales o seleccionar uno con /models <name>\n/webmodels - Explorar modelos web disponibles para instalar\n/files - Gestionar tus documentos e imágenes guardados\n/askfile - Preguntar usando un archivo concreto: /askfile <id> <pregunta>\n/currentmodel - Mostrar tu modelo activo\n\nPuedes enviar mensajes de texto o imágenes (con instrucciones opcionales en el pie de foto).",
     "askfile_prompt": "Ahora envía tu pregunta para el archivo #{id} ({name}).",
     "askfile_usage": "Uso: /askfile <id_archivo> <pregunta>. Ejemplo: /askfile 12 Resume este archivo.",
+    "cancel_ask_done": "Modo pregunta cancelado. Puedes continuar normalmente.",
+    "cancel_nothing": "No hay nada que cancelar ahora mismo.",
     "please_send_non_empty": "Por favor, envía un mensaje no vacío.",
     "voice_disabled": "Los mensajes de voz y audio están desactivados. Por favor, envía mensajes de texto o imágenes.",
     "clear_confirm": "<b>¿Borrar contexto?</b>\nEsto eliminará tu memoria de chat actual.",
@@ -87,7 +90,7 @@
     "no_models_available": "Ahora mismo no hay modelos web disponibles."
   },
   "image": {
-    "default_prompt": "Describe la imagen y extrae cualquier texto visible si lo hay.",
+    "default_prompt": "Describe esta imagen en detalle: identifica todos los objetos visibles, personas, texto, carteles, colores y el contexto o escena general.",
     "model_without_vision": "Tu modelo actual ({model}) no soporta imágenes. Usa /models para elegir un modelo con visión.",
     "too_large": "La imagen es demasiado grande. El tamaño máximo permitido es {max_size}.",
     "invalid_file": "Por favor, envía un archivo de imagen válido.",
@@ -95,9 +98,9 @@
     "read_error": "No he podido leer este archivo de imagen. Vuelve a enviarlo como una imagen JPG/PNG válida."
   },
   "document": {
-    "added": "Documento añadido al contexto: {name}. Pregúntame lo que quieras sobre él.",
+    "added": "Documento guardado como archivo #{id}: {name}.\nPregúntame lo que quieras sobre él o usa /askfile {id} <pregunta>.",
     "too_large": "El documento es demasiado grande. El tamaño máximo permitido es {max_size}.",
-    "unsupported": "Formato de documento no compatible. Envía TXT/MD/CSV/JSON o PDF.",
+    "unsupported": "Formato de documento no compatible. Formatos compatibles: TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX.",
     "empty": "No he podido extraer texto legible de este documento.",
     "processing_error": "No he podido procesar este documento ahora mismo. Inténtalo de nuevo."
   },

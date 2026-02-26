@@ -8,6 +8,7 @@
     "webmodels": "Web-Modelle zum Installieren anzeigen",
     "files": "Gespeicherte Dateien anzeigen",
     "askfile": "Mit einer Datei fragen",
+    "cancel": "Aktuellen Modus abbrechen",
     "currentmodel": "Dein aktuelles Modell anzeigen"
   },
   "ui": {
@@ -36,6 +37,8 @@
     "help": "ℹ️ Verfügbare Befehle:\n/start - Bot starten\n/help - Diese Hilfe anzeigen\n/health - Laufzeit-, Datenbank- und Ollama-Status prüfen\n/clear - Deinen Kontext löschen\n/models - Lokale Modelle auflisten oder eines mit /models <name> auswählen\n/webmodels - Web-Modelle anzeigen, die installiert werden können\n/files - Deine gespeicherten Dokumente und Bilder verwalten\n/askfile - Mit einer bestimmten Datei fragen: /askfile <id> <frage>\n/currentmodel - Dein aktives Modell anzeigen\n\nDu kannst Textnachrichten oder Bilder senden (mit optionalen Anweisungen in der Bildbeschreibung).",
     "askfile_prompt": "Sende jetzt deine Frage für Datei #{id} ({name}).",
     "askfile_usage": "Verwendung: /askfile <datei_id> <frage>. Beispiel: /askfile 12 Fasse diese Datei zusammen.",
+    "cancel_ask_done": "Fragemodus abgebrochen. Du kannst normal fortfahren.",
+    "cancel_nothing": "Es gibt gerade nichts abzubrechen.",
     "please_send_non_empty": "Bitte sende eine nicht-leere Nachricht.",
     "voice_disabled": "Sprach- und Audionachrichten sind deaktiviert. Bitte sende Text- oder Bildnachrichten.",
     "clear_confirm": "<b>Kontext löschen?</b>\nDadurch wird dein aktueller Chat-Speicher entfernt.",
@@ -87,7 +90,7 @@
     "no_models_available": "Derzeit sind keine Web-Modelle verfügbar."
   },
   "image": {
-    "default_prompt": "Beschreibe das Bild und extrahiere sichtbaren Text, falls vorhanden.",
+    "default_prompt": "Beschreibe dieses Bild im Detail: erkenne alle sichtbaren Objekte, Personen, Texte, Schilder, Farben und den allgemeinen Kontext oder die Szene.",
     "model_without_vision": "Dein aktuelles Modell ({model}) unterstützt keine Bilder. Verwende /models, um ein Vision-Modell auszuwählen.",
     "too_large": "Das Bild ist zu groß. Die maximal zulässige Größe ist {max_size}.",
     "invalid_file": "Bitte sende eine gültige Bilddatei.",
@@ -95,9 +98,9 @@
     "read_error": "Ich konnte diese Bilddatei nicht lesen. Bitte sende sie als gültiges JPG/PNG erneut."
   },
   "document": {
-    "added": "Dokument zum Kontext hinzugefügt: {name}. Du kannst mich jetzt dazu fragen.",
+    "added": "Dokument als Datei #{id} gespeichert: {name}.\nDu kannst mich jetzt dazu befragen oder /askfile {id} <frage> verwenden.",
     "too_large": "Das Dokument ist zu groß. Die maximal zulässige Größe ist {max_size}.",
-    "unsupported": "Nicht unterstütztes Dokumentformat. Sende TXT/MD/CSV/JSON oder PDF.",
+    "unsupported": "Nicht unterstütztes Dokumentformat. Unterstützte Formate: TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX.",
     "empty": "Ich konnte aus diesem Dokument keinen lesbaren Text extrahieren.",
     "processing_error": "Ich konnte dieses Dokument momentan nicht verarbeiten. Bitte versuche es erneut."
   },

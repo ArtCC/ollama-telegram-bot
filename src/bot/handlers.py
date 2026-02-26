@@ -62,8 +62,8 @@ ICON_ERROR = "❌"
 MODELS_PAGE_SIZE = 8
 WEB_MODELS_PAGE_SIZE = 8
 FILES_PAGE_SIZE = 6
-FILES_CONTEXT_MAX_ITEMS = 3
-FILES_CONTEXT_MAX_CHARS = 6000
+FILES_CONTEXT_MAX_ITEMS_DEFAULT = 3
+FILES_CONTEXT_MAX_CHARS_DEFAULT = 6000
 
 
 class BotHandlers:
@@ -80,6 +80,8 @@ class BotHandlers:
         document_max_bytes: int,
         document_max_chars: int,
         i18n: I18nService,
+        files_context_max_items: int = FILES_CONTEXT_MAX_ITEMS_DEFAULT,
+        files_context_max_chars: int = FILES_CONTEXT_MAX_CHARS_DEFAULT,
         allowed_user_ids: set[int] | None = None,
         rate_limiter: SlidingWindowRateLimiter | None = None,
     ) -> None:
@@ -93,6 +95,8 @@ class BotHandlers:
         self._image_max_bytes = image_max_bytes
         self._document_max_bytes = document_max_bytes
         self._document_max_chars = document_max_chars
+        self._files_context_max_items = files_context_max_items
+        self._files_context_max_chars = files_context_max_chars
         self._i18n = i18n
         self._allowed_user_ids = allowed_user_ids or set()
         self._rate_limiter = rate_limiter
@@ -112,6 +116,7 @@ class BotHandlers:
             "commands.webmodels",
             "commands.files",
             "commands.askfile",
+            "commands.cancel",
             "commands.currentmodel",
             "ui.buttons.models",
             "ui.buttons.web_models",
@@ -135,6 +140,8 @@ class BotHandlers:
             "messages.please_send_non_empty",
             "messages.askfile_usage",
             "messages.askfile_prompt",
+            "messages.cancel_ask_done",
+            "messages.cancel_nothing",
             "messages.voice_disabled",
             "messages.clear_confirm",
             "messages.clear_cancelled",
@@ -214,6 +221,7 @@ class BotHandlers:
                 ),
                 BotCommand(command="files", description=self._i18n.t("commands.files", locale=locale)),
                 BotCommand(command="askfile", description=self._i18n.t("commands.askfile", locale=locale)),
+                BotCommand(command="cancel", description=self._i18n.t("commands.cancel", locale=locale)),
                 BotCommand(
                     command="currentmodel",
                     description=self._i18n.t("commands.currentmodel", locale=locale),
@@ -559,6 +567,26 @@ class BotHandlers:
 
         for chunk in split_message(ollama_response.text):
             await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+    async def cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Cancel any pending interaction mode (e.g. inline ask)."""
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        pending = self._askfile_target_by_user.pop(user_id, None)
+        if pending is not None:
+            await update.effective_message.reply_text(
+                self._i18n.t("messages.cancel_ask_done", locale=locale),
+                reply_markup=self._main_keyboard(locale),
+            )
+        else:
+            await update.effective_message.reply_text(
+                self._i18n.t("messages.cancel_nothing", locale=locale),
+                reply_markup=self._main_keyboard(locale),
+            )
 
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
@@ -1296,6 +1324,7 @@ class BotHandlers:
         user_prompt_with_assets = self._augment_prompt_with_selected_assets(
             user_id=user_id,
             prompt=user_prompt,
+            asset_kinds={"document"},
         )
         model = self._get_user_model(user_id)
         turns = self._context_store.get_turns(user_id)
@@ -1413,7 +1442,8 @@ class BotHandlers:
                 size_bytes=image_bytes_size,
                 content_text=(
                     f"Image prompt: {user_prompt}\n\n"
-                    f"Image analysis result:\n{ollama_response.text}"
+                    "Image analysis result (generated from the uploaded image):\n"
+                    f"{ollama_response.text}"
                 ),
                 is_selected=True,
             )
@@ -1495,8 +1525,9 @@ class BotHandlers:
             trimmed_text = self._trim_document_text(extracted_text)
             caption = (message.caption or "").strip()
 
+            asset_id: int | None = None
             try:
-                self._user_assets_store.add_asset(
+                asset_id = self._user_assets_store.add_asset(
                     user_id=user_id,
                     asset_kind="document",
                     asset_name=file_name,
@@ -1515,7 +1546,7 @@ class BotHandlers:
                     content=f"[Document: {file_name}]\n{trimmed_text}",
                 )
                 await message.reply_text(
-                    self._success(self._i18n.t("document.added", locale=locale, name=file_name)),
+                    self._success(self._i18n.t("document.added", locale=locale, name=file_name, id=asset_id or "?")),
                     reply_markup=self._main_keyboard(locale),
                 )
                 return
@@ -1766,15 +1797,29 @@ class BotHandlers:
             return cleaned
         return f"{cleaned[: max_chars - 1]}…"
 
-    def _asset_preview(self, text: str) -> str:
+    def _asset_preview(self, asset: UserAsset) -> str:
+        text = asset.content_text
         if not text.strip():
             return "—"
 
-        image_prompt_match = re.search(r"Image prompt:\s*(.+)", text, flags=re.IGNORECASE)
-        if image_prompt_match:
-            prompt = image_prompt_match.group(1).strip()
-            if prompt:
-                return self._truncate_text(f"🖼️ {prompt}", max_chars=95)
+        if asset.asset_kind == "image":
+            analysis_match = re.search(
+                r"Image analysis result:\s*(.+)",
+                text,
+                flags=re.IGNORECASE | re.DOTALL,
+            )
+            if analysis_match:
+                analysis_text = " ".join(analysis_match.group(1).split())
+                if analysis_text:
+                    return self._truncate_text(f"🖼️ {analysis_text}", max_chars=95)
+
+            image_prompt_match = re.search(r"Image prompt:\s*(.+)", text, flags=re.IGNORECASE)
+            if image_prompt_match:
+                prompt = image_prompt_match.group(1).strip()
+                if prompt:
+                    return self._truncate_text(f"🖼️ {prompt}", max_chars=95)
+
+            return "🖼️ Image asset"
 
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if lines:
@@ -1832,6 +1877,39 @@ class BotHandlers:
             pages_text = [page.extract_text() or "" for page in reader.pages]
             return "\n\n".join(pages_text)
 
+        docx_mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        if mime_type == docx_mime or suffix == "docx":
+            try:
+                from docx import Document as DocxDocument
+            except Exception as error:
+                raise ValueError("DOCX extraction requires python-docx") from error
+
+            doc = DocxDocument(io.BytesIO(content))
+            paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+            return "\n".join(paragraphs)
+
+        xlsx_mimes = {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+        }
+        if mime_type in xlsx_mimes or suffix in ("xlsx", "xls"):
+            try:
+                import openpyxl
+            except Exception as error:
+                raise ValueError("XLSX extraction requires openpyxl") from error
+
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            parts: list[str] = []
+            for sheet in wb.worksheets:
+                sheet_rows: list[str] = []
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = "\t".join(str(cell) if cell is not None else "" for cell in row).rstrip()
+                    if row_text.strip():
+                        sheet_rows.append(row_text)
+                if sheet_rows:
+                    parts.append(f"[Sheet: {sheet.title}]\n" + "\n".join(sheet_rows))
+            return "\n\n".join(parts)
+
         raise ValueError(f"Unsupported document format: {mime_type or suffix or 'unknown'}")
 
     def _locale(self, update: Update) -> str:
@@ -1883,7 +1961,7 @@ class BotHandlers:
             kind = "doc" if asset.asset_kind == "document" else "img"
             asset_name = self._truncate_text(asset.asset_name, max_chars=38)
             size = self._format_size_compact(asset.size_bytes)
-            preview = self._asset_preview(asset.content_text)
+            preview = self._asset_preview(asset)
             lines.append(f"- #{asset.id} [{kind}] {asset_name} {selected_marker} ({size})")
             lines.append(f"  {preview}")
         lines.append("")
@@ -1949,13 +2027,14 @@ class BotHandlers:
 
         return InlineKeyboardMarkup(rows)
 
-    def _augment_prompt_with_selected_assets(self, *, user_id: int, prompt: str) -> str:
+    def _augment_prompt_with_selected_assets(self, *, user_id: int, prompt: str, asset_kinds: set[str] | None = None) -> str:
         try:
             selected_assets = self._user_assets_store.search_selected_assets(
                 user_id=user_id,
                 query=prompt,
-                limit=FILES_CONTEXT_MAX_ITEMS,
-                max_chars_total=FILES_CONTEXT_MAX_CHARS,
+                limit=self._files_context_max_items,
+                max_chars_total=self._files_context_max_chars,
+                asset_kinds=asset_kinds,
             )
         except Exception as error:
             logger.warning("selected_assets_context_failed user_id=%s error=%s", user_id, error)
@@ -1977,9 +2056,6 @@ class BotHandlers:
             return prompt
 
         has_image_assets = any(asset.asset_kind == "image" for asset in assets)
-        prompt_mentions_image = bool(
-            re.search(r"\b(image|images|photo|picture|imagen|imágenes|foto|fotos)\b", prompt, flags=re.IGNORECASE)
-        )
 
         lines = [
             "Important context instructions:",
@@ -1989,9 +2065,12 @@ class BotHandlers:
         ]
         if force_single:
             lines.append("- You MUST prioritize only the single file provided below for this answer.")
-        if has_image_assets and prompt_mentions_image:
+        if has_image_assets:
             lines.append(
                 "- For image-related questions, use the stored image analysis below as your visual source of truth."
+            )
+            lines.append(
+                "- The original image bytes are not available at this step; answer from stored image analysis content and do not ask for re-upload."
             )
 
         lines.append("")
@@ -2193,6 +2272,7 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("webmodels", handlers.web_models))
     application.add_handler(CommandHandler("files", handlers.files))
     application.add_handler(CommandHandler("askfile", handlers.askfile))
+    application.add_handler(CommandHandler("cancel", handlers.cancel))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
     application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))

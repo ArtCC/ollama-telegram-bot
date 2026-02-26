@@ -65,11 +65,15 @@ def main() -> None:
     )
 
     logger.info(
-        "startup_runtime max_context_messages=%d image_max_bytes=%d document_max_bytes=%d document_max_chars=%d allowed_users=%d",
+        "startup_runtime max_context_messages=%d image_max_bytes=%d document_max_bytes=%d document_max_chars=%d "
+        "files_context_max_items=%d files_context_max_chars=%d asset_ttl_days=%d allowed_users=%d",
         settings.max_context_messages,
         settings.image_max_bytes,
         settings.document_max_bytes,
         settings.document_max_chars,
+        settings.files_context_max_items,
+        settings.files_context_max_chars,
+        settings.asset_ttl_days,
         len(settings.allowed_user_ids),
     )
 
@@ -79,6 +83,10 @@ def main() -> None:
     )
     model_preferences_store = ModelPreferencesStore(settings.model_prefs_db_path)
     user_assets_store = UserAssetsStore(settings.model_prefs_db_path)
+
+    purged = user_assets_store.purge_expired_assets(settings.asset_ttl_days)
+    if purged > 0:
+        logger.info("startup_assets_purged count=%d ttl_days=%d", purged, settings.asset_ttl_days)
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,
         cloud_base_url=settings.ollama_cloud_base_url,
@@ -98,6 +106,8 @@ def main() -> None:
         image_max_bytes=settings.image_max_bytes,
         document_max_bytes=settings.document_max_bytes,
         document_max_chars=settings.document_max_chars,
+        files_context_max_items=settings.files_context_max_items,
+        files_context_max_chars=settings.files_context_max_chars,
         i18n=i18n,
         allowed_user_ids=set(settings.allowed_user_ids),
         rate_limiter=(

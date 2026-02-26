@@ -23,6 +23,9 @@ class Settings:
     image_max_bytes: int
     document_max_bytes: int
     document_max_chars: int
+    files_context_max_items: int
+    files_context_max_chars: int
+    asset_ttl_days: int
     bot_default_locale: str
     log_level: str
 
@@ -72,6 +75,9 @@ def load_settings() -> Settings:
     image_max_bytes_raw = os.getenv("IMAGE_MAX_BYTES", "5242880").strip()
     document_max_bytes_raw = os.getenv("DOCUMENT_MAX_BYTES", "10485760").strip()
     document_max_chars_raw = os.getenv("DOCUMENT_MAX_CHARS", "12000").strip()
+    files_context_max_items_raw = os.getenv("FILES_CONTEXT_MAX_ITEMS", "3").strip()
+    files_context_max_chars_raw = os.getenv("FILES_CONTEXT_MAX_CHARS", "6000").strip()
+    asset_ttl_days_raw = os.getenv("ASSET_TTL_DAYS", "30").strip()
     use_chat_api_raw = os.getenv("OLLAMA_USE_CHAT_API", "true")
     ollama_keep_alive = os.getenv("OLLAMA_KEEP_ALIVE", "5m").strip()
     bot_default_locale = os.getenv("BOT_DEFAULT_LOCALE", "en").strip().lower()
@@ -87,10 +93,13 @@ def load_settings() -> Settings:
         image_max_bytes = int(image_max_bytes_raw)
         document_max_bytes = int(document_max_bytes_raw)
         document_max_chars = int(document_max_chars_raw)
+        files_context_max_items = int(files_context_max_items_raw)
+        files_context_max_chars = int(files_context_max_chars_raw)
+        asset_ttl_days = int(asset_ttl_days_raw)
         ollama_use_chat_api = _parse_bool(use_chat_api_raw)
     except ValueError as error:
         raise ValueError(
-            "REQUEST_TIMEOUT_SECONDS, MAX_CONTEXT_MESSAGES, RATE_LIMIT_MAX_MESSAGES, RATE_LIMIT_WINDOW_SECONDS, IMAGE_MAX_BYTES, DOCUMENT_MAX_BYTES and DOCUMENT_MAX_CHARS must be integers, and OLLAMA_USE_CHAT_API must be a boolean"
+            "REQUEST_TIMEOUT_SECONDS, MAX_CONTEXT_MESSAGES, RATE_LIMIT_MAX_MESSAGES, RATE_LIMIT_WINDOW_SECONDS, IMAGE_MAX_BYTES, DOCUMENT_MAX_BYTES, DOCUMENT_MAX_CHARS, FILES_CONTEXT_MAX_ITEMS, FILES_CONTEXT_MAX_CHARS and ASSET_TTL_DAYS must be integers, and OLLAMA_USE_CHAT_API must be a boolean"
         ) from error
 
     if request_timeout_seconds < 5:
@@ -107,6 +116,12 @@ def load_settings() -> Settings:
         raise ValueError("DOCUMENT_MAX_BYTES must be >= 1024")
     if document_max_chars < 1000:
         raise ValueError("DOCUMENT_MAX_CHARS must be >= 1000")
+    if files_context_max_items < 1:
+        raise ValueError("FILES_CONTEXT_MAX_ITEMS must be >= 1")
+    if files_context_max_chars < 500:
+        raise ValueError("FILES_CONTEXT_MAX_CHARS must be >= 500")
+    if asset_ttl_days < 1:
+        raise ValueError("ASSET_TTL_DAYS must be >= 1")
     if not ollama_keep_alive:
         raise ValueError("OLLAMA_KEEP_ALIVE cannot be empty")
     if not ollama_auth_scheme:
@@ -136,6 +151,9 @@ def load_settings() -> Settings:
         image_max_bytes=image_max_bytes,
         document_max_bytes=document_max_bytes,
         document_max_chars=document_max_chars,
+        files_context_max_items=files_context_max_items,
+        files_context_max_chars=files_context_max_chars,
+        asset_ttl_days=asset_ttl_days,
         bot_default_locale=bot_default_locale,
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
     )

@@ -95,7 +95,7 @@ ollama-telegram-bot/
 - [x] Persistent SQLite conversation context across restarts.
 - [x] Natural-language-first UX: no extra technical commands required for advanced behavior.
 - [x] Image input support (photo/image document + optional caption instruction) using the selected model.
-- [x] Document upload and review support (TXT/MD/CSV/JSON/PDF) using the selected model.
+- [x] Document upload and review support (TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX) using the selected model.
 - [x] Optional cloud-ready Ollama auth configuration (`OLLAMA_API_KEY`, `OLLAMA_AUTH_SCHEME`).
 - [x] Localization support with user Telegram language resolution and English fallback.
 - [x] Locale files available for `en`, `es`, `de`, `fr`, and `it`.
@@ -108,19 +108,29 @@ ollama-telegram-bot/
 - [x] MVP file memory workflow: uploaded documents/images are persisted per user and can be listed from `/files`.
 - [x] `/files` inline management: select/deselect files for context and delete files.
 - [x] Selected files are injected as context for model responses (RAG-lite retrieval over selected user files).
+- [x] `/cancel` command to exit any pending interaction mode (e.g. inline Ask).
+- [x] Inline `💬 Ask` button per file in `/files` for direct single-file questioning.
+- [x] Asset deduplication: identical file content is stored only once per user (SHA-256 hash).
+- [x] Automatic asset TTL purge at startup (configurable via `ASSET_TTL_DAYS`, default 30 days).
+- [x] RAG context limits configurable via `FILES_CONTEXT_MAX_ITEMS` and `FILES_CONTEXT_MAX_CHARS`.
+- [x] Improved image ingestion prompt: detailed description covering objects, text, colours, and scene context.
+- [x] Image-related RAG instructions always injected when image assets are in context (no keyword dependency).
+- [x] Document confirmation message includes asset ID and `/askfile` hint for immediate use.
 
 ## Files Context (MVP)
 
-- Upload a **document** (TXT/MD/CSV/JSON/PDF) or an **image** as usual.
-- Uploaded files are stored per user and are selected by default for contextual use.
+- Upload a **document** (TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX) or an **image** as usual.
+- Uploaded files are stored per user and are selected by default for contextual use. Identical content is deduplicated automatically.
 - Open `/files` to:
   - list saved files,
   - select/deselect files to include in context,
   - delete files you no longer want to keep,
   - ask directly from one file using the inline `💬 Ask` button.
+- After pressing `💬 Ask`, send your question as a plain message. Use `/cancel` to exit Ask mode without asking.
 - Use `/askfile <id> <question>` to force a response based on one specific file.
 - The model uses selected files as additional context when answering new requests.
 - For documents with caption, the bot also performs immediate review while keeping the file saved.
+- Stored assets are automatically purged after `ASSET_TTL_DAYS` days (default: 30).
 
 ## Configuration
 
@@ -153,6 +163,9 @@ services:
       IMAGE_MAX_BYTES: ${IMAGE_MAX_BYTES:-5242880}
       DOCUMENT_MAX_BYTES: ${DOCUMENT_MAX_BYTES:-10485760}
       DOCUMENT_MAX_CHARS: ${DOCUMENT_MAX_CHARS:-12000}
+      FILES_CONTEXT_MAX_ITEMS: ${FILES_CONTEXT_MAX_ITEMS:-3}
+      FILES_CONTEXT_MAX_CHARS: ${FILES_CONTEXT_MAX_CHARS:-6000}
+      ASSET_TTL_DAYS: ${ASSET_TTL_DAYS:-30}
       BOT_DEFAULT_LOCALE: ${BOT_DEFAULT_LOCALE:-en}
       TZ: ${TZ:-Europe/Madrid}
 ```
@@ -180,6 +193,9 @@ See `.env.example` for the complete list and example values.
 - `IMAGE_MAX_BYTES`: Maximum accepted image size in bytes for image analysis requests.
 - `DOCUMENT_MAX_BYTES`: Maximum accepted document size in bytes.
 - `DOCUMENT_MAX_CHARS`: Maximum extracted document characters sent to model context/review.
+- `FILES_CONTEXT_MAX_ITEMS`: Maximum number of user files injected as RAG context per message (default `3`).
+- `FILES_CONTEXT_MAX_CHARS`: Maximum total characters of RAG context injected per message (default `6000`).
+- `ASSET_TTL_DAYS`: Days after which stored user assets are automatically purged at startup (default `30`).
 - `BOT_DEFAULT_LOCALE`: Fallback locale when user Telegram language is not available in bot locales.
 - `TZ`: Timezone in IANA format (for example `Europe/Madrid`).
 
