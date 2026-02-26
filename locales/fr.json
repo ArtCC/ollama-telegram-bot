@@ -9,7 +9,9 @@
     "files": "Lister vos fichiers enregistrés",
     "askfile": "Poser une question avec un fichier",
     "cancel": "Annuler le mode actuel",
-    "currentmodel": "Afficher votre modèle actuel"
+    "currentmodel": "Afficher votre modèle actuel",
+    "deletemodel": "Supprimer un modèle local",
+    "info": "Afficher les détails du modèle"
   },
   "ui": {
     "buttons": {
@@ -75,7 +77,13 @@
     "not_available_anymore": "Le modèle n’est plus disponible. Utilisez /models pour actualiser la liste.",
     "no_matches": "Aucun modèle ne correspond à votre recherche. Essayez un autre terme.",
     "page_status": "Page {page}/{pages}",
-    "no_models_available": "Aucun modèle n’est actuellement disponible dans Ollama."
+    "no_models_available": "Aucun modèle n'est actuellement disponible dans Ollama.",
+    "delete_usage": "Utilisation : /deletemodel <nom_du_modèle>",
+    "delete_confirm": "⚠️ Supprimer <b>{model}</b> d'Ollama ? Cette action est irréversible.",
+    "delete_done": "{model} supprimé avec succès.",
+    "delete_failed": "Impossible de supprimer {model} : {error}",
+    "delete_not_found": "Le modèle {model} n'a pas été trouvé localement.",
+    "info_not_found": "Modèle {model} introuvable. Utilisez /models pour voir les modèles installés."
   },
   "files": {
     "available_title": "Fichiers enregistrés :",
@@ -99,7 +107,8 @@
     "download_done": "✅ {model} installé avec succès. Utilisez /models pour le sélectionner.",
     "download_failed": "❌ Échec du téléchargement de {model} : {error}",
     "already_downloading": "⏳ {model} est déjà en cours de téléchargement, veuillez patienter.",
-    "size_select": "Choisissez une taille à télécharger pour {model} :"
+    "size_select": "Choisissez une taille à télécharger pour {model} :",
+    "download_cancelled": "⏹ Téléchargement de {model} annulé."
   },
   "image": {
     "default_prompt": "Décrivez cette image en détail : identifiez tous les objets visibles, personnes, textes, panneaux, couleurs et le contexte général ou la scène.",

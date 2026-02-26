@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
@@ -285,17 +287,45 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama web catalog failure") from last_error
         raise OllamaError("Unexpected Ollama web catalog failure")
 
-    async def pull_model(self, model_name: str) -> None:
-        """Download a model from the Ollama registry via POST /api/pull."""
+    async def pull_model(
+        self,
+        model_name: str,
+        *,
+        progress_callback: Callable[[str, int, int], Awaitable[None]] | None = None,
+        cancel_event: asyncio.Event | None = None,
+    ) -> None:
+        """Stream-download a model via POST /api/pull; calls progress_callback(status, completed, total)
+        on each NDJSON line. Raises asyncio.CancelledError if cancel_event is set."""
         started_at = monotonic()
         logger.info("ollama_pull_model_start model=%s", model_name)
         try:
             async with httpx.AsyncClient(timeout=None) as client:
-                response = await client.post(
+                async with client.stream(
+                    "POST",
                     f"{self._base_url}/api/pull",
-                    json={"model": model_name, "stream": False},
-                )
-            response.raise_for_status()
+                    json={"model": model_name, "stream": True},
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if cancel_event and cancel_event.is_set():
+                            logger.info("ollama_pull_model_cancelled model=%s", model_name)
+                            raise asyncio.CancelledError(f"Pull cancelled: {model_name}")
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        if err := chunk.get("error"):
+                            raise OllamaError(f"Pull error: {err}")
+                        if progress_callback:
+                            await progress_callback(
+                                chunk.get("status", ""),
+                                chunk.get("completed", 0),
+                                chunk.get("total", 0),
+                            )
+        except asyncio.CancelledError:
+            raise
         except httpx.TimeoutException as error:
             raise OllamaTimeoutError(f"Model pull timed out: {model_name}") from error
         except httpx.RequestError as error:
@@ -307,6 +337,56 @@ class OllamaClient:
             ) from error
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info("ollama_pull_model_done model=%s elapsed_ms=%d", model_name, elapsed_ms)
+
+    async def delete_model(self, model_name: str) -> None:
+        """Delete a local model via DELETE /api/delete."""
+        logger.info("ollama_delete_model_start model=%s", model_name)
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.request(
+                    "DELETE",
+                    f"{self._base_url}/api/delete",
+                    json={"model": model_name},
+                )
+            response.raise_for_status()
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError(f"Delete request timed out: {model_name}") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError(
+                f"Could not connect to Ollama to delete {model_name}"
+            ) from error
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404:
+                raise OllamaError(f"Model not found: {model_name}") from error
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Ollama delete returned HTTP {error.response.status_code}: {detail}"
+            ) from error
+        logger.info("ollama_delete_model_done model=%s", model_name)
+
+    async def show_model(self, model_name: str) -> dict[str, Any]:
+        """Return model metadata via POST /api/show."""
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/show",
+                    json={"model": model_name},
+                )
+            response.raise_for_status()
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError(f"Show request timed out: {model_name}") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError(
+                f"Could not connect to Ollama for show {model_name}"
+            ) from error
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 404:
+                raise OllamaError(f"Model not found: {model_name}") from error
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Ollama show returned HTTP {error.response.status_code}: {detail}"
+            ) from error
+        return response.json()
 
     async def chat(
         self,

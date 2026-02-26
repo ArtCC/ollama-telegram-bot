@@ -9,7 +9,9 @@
     "files": "List your saved files",
     "askfile": "Ask using one file",
     "cancel": "Cancel current mode",
-    "currentmodel": "Show your current model"
+    "currentmodel": "Show your current model",
+    "deletemodel": "Delete a local model",
+    "info": "Show model details"
   },
   "ui": {
     "buttons": {
@@ -75,7 +77,13 @@
     "not_available_anymore": "Model is no longer available. Use /models to refresh the list.",
     "no_matches": "No models match your search. Try another term.",
     "page_status": "Page {page}/{pages}",
-    "no_models_available": "No models are currently available in Ollama."
+    "no_models_available": "No models are currently available in Ollama.",
+    "delete_usage": "Usage: /deletemodel <model_name>",
+    "delete_confirm": "⚠️ Delete <b>{model}</b> from Ollama? This cannot be undone.",
+    "delete_done": "{model} deleted successfully.",
+    "delete_failed": "Could not delete {model}: {error}",
+    "delete_not_found": "Model {model} not found locally.",
+    "info_not_found": "Model {model} not found. Use /models to see installed models."
   },
   "files": {
     "available_title": "Saved files:",
@@ -99,7 +107,8 @@
     "download_done": "✅ {model} installed successfully. Use /models to select it.",
     "download_failed": "❌ Failed to download {model}: {error}",
     "already_downloading": "⏳ {model} is already being downloaded, please wait.",
-    "size_select": "Choose a size to download for {model}:"
+    "size_select": "Choose a size to download for {model}:",
+    "download_cancelled": "⏹ Download of {model} cancelled."
   },
   "image": {
     "default_prompt": "Describe this image in detail: identify all visible objects, people, text, signs, colours, and the overall context or scene.",

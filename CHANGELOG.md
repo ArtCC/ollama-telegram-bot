@@ -13,7 +13,15 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added `_fetch_web_models()` helper with a 5-minute in-memory cache to reduce redundant web requests across rapid interactions.
 - Added `_filter_web_models()` helper that searches across name, description, capabilities and sizes — e.g. `/webmodels vision` shows only vision-capable models.
 - Added `_format_web_model_detail()` static helper for building the rich detail card text.
-- Added `web_models.size_select` i18n key (all 5 locales).
+- Added **real-time download progress bar**: `pull_model()` now streams NDJSON from `POST /api/pull {"stream": true}`, invoking a `progress_callback(status, completed, total)` on every line; the bot edits the in-chat message every 2 seconds with a `█░` bar showing percentage and MB transferred.
+- Added **Cancel button during download**: a `WEB_MODEL_CANCEL_ACTION` inline button is shown on the progress message; tapping it sets an `asyncio.Event` that stops the pull mid-stream and notifies the user with a ⏹ cancelled message.
+- Added `_download_cancel_events: dict[str, asyncio.Event]` state to `BotHandlers` for per-model cancel tracking, cleaned up on download completion or cancellation.
+- Added **`/deletemodel <name>`** command: shows a confirm/abort inline keyboard before calling `DELETE /api/delete` on the local Ollama daemon. Handles 404 (model not found) and generic errors with localized messages.
+- Added `delete_model_callback` handler (pattern `^delmod:`) for the confirm/abort inline actions.
+- Added `delete_model()` method to `OllamaClient` (`DELETE /api/delete`) with 404-aware error mapping.
+- Added **`/info [model]`** command: calls `POST /api/show` and replies with an HTML card showing family, parameter size, quantization level, architecture, disk size (MB), and first 200 chars of the system prompt if present. Falls back to the user's current model when no argument is given.
+- Added `show_model()` method to `OllamaClient` (`POST /api/show`) returning `dict[str, Any]`, with 404 handling.
+- Added `web_models.size_select` and `web_models.download_cancelled` i18n keys; added `commands.deletemodel`, `commands.info`, `models.delete_usage`, `models.delete_confirm`, `models.delete_done`, `models.delete_failed`, `models.delete_not_found`, `models.info_not_found` keys to all 5 locales (en/es/de/fr/it).
 
 ## [0.0.6] - 2026-02-26
 

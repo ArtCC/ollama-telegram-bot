@@ -9,7 +9,9 @@
     "files": "Listar tus archivos guardados",
     "askfile": "Preguntar usando un archivo",
     "cancel": "Cancelar el modo actual",
-    "currentmodel": "Mostrar tu modelo actual"
+    "currentmodel": "Mostrar tu modelo actual",
+    "deletemodel": "Eliminar un modelo local",
+    "info": "Mostrar detalles del modelo"
   },
   "ui": {
     "buttons": {
@@ -75,7 +77,13 @@
     "not_available_anymore": "El modelo ya no está disponible. Usa /models para actualizar la lista.",
     "no_matches": "No hay modelos que coincidan con tu búsqueda. Prueba otro término.",
     "page_status": "Página {page}/{pages}",
-    "no_models_available": "Ahora mismo no hay modelos disponibles en Ollama."
+    "no_models_available": "Ahora mismo no hay modelos disponibles en Ollama.",
+    "delete_usage": "Uso: /deletemodel <nombre_modelo>",
+    "delete_confirm": "⚠️ ¿Eliminar <b>{model}</b> de Ollama? Esta acción no se puede deshacer.",
+    "delete_done": "{model} eliminado correctamente.",
+    "delete_failed": "No se pudo eliminar {model}: {error}",
+    "delete_not_found": "El modelo {model} no se encontró localmente.",
+    "info_not_found": "El modelo {model} no se encontró. Usa /models para ver los modelos instalados."
   },
   "files": {
     "available_title": "Archivos guardados:",
@@ -99,7 +107,8 @@
     "download_done": "✅ {model} instalado correctamente. Usa /models para seleccionarlo.",
     "download_failed": "❌ Error al descargar {model}: {error}",
     "already_downloading": "⏳ {model} ya se está descargando, espera un momento.",
-    "size_select": "Elige el tamaño a descargar para {model}:"
+    "size_select": "Elige el tamaño a descargar para {model}:",
+    "download_cancelled": "⏹ Descarga de {model} cancelada."
   },
   "image": {
     "default_prompt": "Describe esta imagen en detalle: identifica todos los objetos visibles, personas, texto, carteles, colores y el contexto o escena general.",

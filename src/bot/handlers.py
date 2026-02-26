@@ -57,6 +57,10 @@ WEB_MODEL_CLOSE_ACTION = "__close__"
 WEB_MODEL_DETAIL_ACTION = "__detail__:"
 WEB_MODEL_DOWNLOAD_ACTION = "__download__:"
 WEB_MODEL_SIZE_ACTION = "__size__:"
+WEB_MODEL_CANCEL_ACTION = "__cancel__:"
+DELETE_MODEL_CALLBACK_PREFIX = "delmod:"
+DELETE_MODEL_CONFIRM_ACTION = "confirm"
+DELETE_MODEL_ABORT_ACTION = "abort"
 _WEB_MODELS_CACHE_TTL = 300.0  # 5 minutes
 FILE_PAGE_ACTION = "page"
 FILE_TOGGLE_ACTION = "toggle"
@@ -115,6 +119,7 @@ class BotHandlers:
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
         self._model_downloads_in_progress: set[str] = set()
+        self._download_cancel_events: dict[str, asyncio.Event] = {}
         self._web_models_cache: list[WebModelInfo] = []
         self._web_models_cache_expires: float = 0.0
         self._askfile_target_by_user: dict[int, int] = {}
@@ -235,6 +240,15 @@ class BotHandlers:
             "web_models.size_select",
             "ui.buttons.download",
             "ui.buttons.open_web",
+            "commands.deletemodel",
+            "commands.info",
+            "web_models.download_cancelled",
+            "models.delete_usage",
+            "models.delete_confirm",
+            "models.delete_done",
+            "models.delete_failed",
+            "models.delete_not_found",
+            "models.info_not_found",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -255,6 +269,14 @@ class BotHandlers:
                 BotCommand(
                     command="currentmodel",
                     description=self._i18n.t("commands.currentmodel", locale=locale),
+                ),
+                BotCommand(
+                    command="deletemodel",
+                    description=self._i18n.t("commands.deletemodel", locale=locale),
+                ),
+                BotCommand(
+                    command="info",
+                    description=self._i18n.t("commands.info", locale=locale),
                 ),
             ]
             if locale == self._i18n.default_locale:
@@ -941,6 +963,13 @@ class BotHandlers:
             await self._show_web_models_page(update, int(page_raw))
             return
 
+        if action.startswith(WEB_MODEL_CANCEL_ACTION):
+            model_name = action.removeprefix(WEB_MODEL_CANCEL_ACTION).strip()
+            cancel_ev = self._download_cancel_events.get(model_name)
+            if cancel_ev:
+                cancel_ev.set()
+            return
+
         if action.startswith(WEB_MODEL_DETAIL_ACTION):
             model_name = action.removeprefix(WEB_MODEL_DETAIL_ACTION).strip()
             if not model_name:
@@ -1037,6 +1066,18 @@ class BotHandlers:
                 )
                 return
             self._model_downloads_in_progress.add(model_name)
+            cancel_event = asyncio.Event()
+            self._download_cancel_events[model_name] = cancel_event
+            cancel_kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text=self._i18n.t("ui.buttons.cancel", locale=locale),
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{model_name}",
+                        )
+                    ]
+                ]
+            )
             try:
                 await self._edit_models_message(
                     query=query,
@@ -1045,16 +1086,18 @@ class BotHandlers:
                             "web_models.download_started", locale=locale, model=model_name
                         )
                     ),
-                    reply_markup=InlineKeyboardMarkup([]),
+                    reply_markup=cancel_kb,
                 )
             except Exception as edit_error:  # noqa: BLE001
                 logger.debug("Could not edit message for download start: %s", edit_error)
             asyncio.create_task(
                 self._background_pull_model(
                     chat_id=query.message.chat_id,
+                    message_id=query.message.message_id,
                     model_name=model_name,
                     locale=locale,
                     context=context,
+                    cancel_event=cancel_event,
                 )
             )
             return
@@ -1075,6 +1118,18 @@ class BotHandlers:
                 )
                 return
             self._model_downloads_in_progress.add(full_model)
+            cancel_event = asyncio.Event()
+            self._download_cancel_events[full_model] = cancel_event
+            cancel_kb = InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            text=self._i18n.t("ui.buttons.cancel", locale=locale),
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{full_model}",
+                        )
+                    ]
+                ]
+            )
             try:
                 await self._edit_models_message(
                     query=query,
@@ -1083,16 +1138,18 @@ class BotHandlers:
                             "web_models.download_started", locale=locale, model=full_model
                         )
                     ),
-                    reply_markup=InlineKeyboardMarkup([]),
+                    reply_markup=cancel_kb,
                 )
             except Exception as edit_error:  # noqa: BLE001
                 logger.debug("Could not edit message for size download start: %s", edit_error)
             asyncio.create_task(
                 self._background_pull_model(
                     chat_id=query.message.chat_id,
+                    message_id=query.message.message_id,
                     model_name=full_model,
                     locale=locale,
                     context=context,
+                    cancel_event=cancel_event,
                 )
             )
             return
@@ -1101,40 +1158,280 @@ class BotHandlers:
         self,
         *,
         chat_id: int,
+        message_id: int,
         model_name: str,
         locale: str,
         context: ContextTypes.DEFAULT_TYPE,
+        cancel_event: asyncio.Event,
     ) -> None:
+        cancel_kb = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.cancel", locale=locale),
+                        callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{model_name}",
+                    )
+                ]
+            ]
+        )
+        last_edit: list[float] = [monotonic()]
+
+        async def _on_progress(status: str, completed: int, total: int) -> None:
+            now = monotonic()
+            if total > 0 and completed > 0:
+                pct = completed / total
+                filled = int(pct * 10)
+                bar = "█" * filled + "░" * (10 - filled)
+                mb_done = completed / 1_048_576
+                mb_total = total / 1_048_576
+                progress_line = f"{bar} {pct * 100:.0f}%  ({mb_done:.1f}/{mb_total:.1f} MB)"
+            else:
+                progress_line = status or "…"
+            if now - last_edit[0] < 2.0:
+                return
+            last_edit[0] = now
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=f"⏳ <b>{model_name}</b>\n{progress_line}",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=cancel_kb,
+                )
+            except Exception:  # noqa: BLE001
+                pass
+
+        result_text: str | None = None
         try:
-            await self._ollama_client.pull_model(model_name)
-            text = self._success(
+            await self._ollama_client.pull_model(
+                model_name,
+                progress_callback=_on_progress,
+                cancel_event=cancel_event,
+            )
+            result_text = self._success(
                 self._i18n.t("web_models.download_done", locale=locale, model=model_name)
+            )
+        except asyncio.CancelledError:
+            result_text = self._i18n.t(
+                "web_models.download_cancelled", locale=locale, model=model_name
             )
         except (OllamaError, OllamaTimeoutError, OllamaConnectionError) as error:
             logger.error("pull_model_failed model=%s error=%s", model_name, error)
-            text = self._error(
+            result_text = self._error(
                 self._i18n.t(
                     "web_models.download_failed", locale=locale, model=model_name, error=str(error)
                 )
             )
         except Exception as error:  # noqa: BLE001
             logger.exception("pull_model_unexpected_error model=%s error=%s", model_name, error)
-            text = self._error(
+            result_text = self._error(
                 self._i18n.t(
                     "web_models.download_failed", locale=locale, model=model_name, error=str(error)
                 )
             )
         finally:
             self._model_downloads_in_progress.discard(model_name)
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=text)
-        except Exception as notify_error:  # noqa: BLE001
-            logger.warning(
-                "pull_model_notify_failed chat_id=%s model=%s error=%s",
-                chat_id,
-                model_name,
-                notify_error,
+            self._download_cancel_events.pop(model_name, None)
+
+        if result_text:
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=result_text,
+                    reply_markup=None,
+                )
+            except Exception:  # noqa: BLE001
+                try:
+                    await context.bot.send_message(chat_id=chat_id, text=result_text)
+                except Exception as notify_error:  # noqa: BLE001
+                    logger.warning(
+                        "pull_model_notify_failed chat_id=%s model=%s error=%s",
+                        chat_id,
+                        model_name,
+                        notify_error,
+                    )
+
+    # ------------------------------------------------------------------ #
+    #  /deletemodel                                                        #
+    # ------------------------------------------------------------------ #
+
+    async def delete_model(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+        locale = self._locale(update)
+
+        args = context.args or []
+        if not args:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("models.delete_usage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
             )
+            return
+
+        model_name = args[0].strip()
+        confirm_text = self._i18n.t("models.delete_confirm", locale=locale, model=model_name)
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.confirm", locale=locale),
+                        callback_data=f"{DELETE_MODEL_CALLBACK_PREFIX}{DELETE_MODEL_CONFIRM_ACTION}:{model_name}",
+                    ),
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.cancel", locale=locale),
+                        callback_data=f"{DELETE_MODEL_CALLBACK_PREFIX}{DELETE_MODEL_ABORT_ACTION}",
+                    ),
+                ]
+            ]
+        )
+        await update.effective_message.reply_text(
+            confirm_text,
+            reply_markup=keyboard,
+        )
+
+    async def delete_model_callback(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._guard_access(update):
+            return
+        query = update.callback_query
+        if not query or not query.message:
+            return
+        await query.answer()
+
+        locale = self._locale(update)
+        data = query.data or ""
+        payload = data.removeprefix(DELETE_MODEL_CALLBACK_PREFIX).strip()
+
+        if payload == DELETE_MODEL_ABORT_ACTION:
+            try:
+                await query.message.delete()
+            except Exception:  # noqa: BLE001
+                await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        if payload.startswith(f"{DELETE_MODEL_CONFIRM_ACTION}:"):
+            model_name = payload.removeprefix(f"{DELETE_MODEL_CONFIRM_ACTION}:").strip()
+            try:
+                await self._ollama_client.delete_model(model_name)
+                text = self._success(
+                    self._i18n.t("models.delete_done", locale=locale, model=model_name)
+                )
+            except OllamaError as error:
+                err_str = str(error)
+                if "not found" in err_str.lower():
+                    text = self._warning(
+                        self._i18n.t("models.delete_not_found", locale=locale, model=model_name)
+                    )
+                else:
+                    text = self._error(
+                        self._i18n.t(
+                            "models.delete_failed",
+                            locale=locale,
+                            model=model_name,
+                            error=err_str,
+                        )
+                    )
+            except Exception as error:  # noqa: BLE001
+                text = self._error(
+                    self._i18n.t(
+                        "models.delete_failed",
+                        locale=locale,
+                        model=model_name,
+                        error=str(error),
+                    )
+                )
+            try:
+                await query.edit_message_text(text, reply_markup=None)
+            except Exception:  # noqa: BLE001
+                await query.message.reply_text(text)
+
+    # ------------------------------------------------------------------ #
+    #  /info                                                               #
+    # ------------------------------------------------------------------ #
+
+    async def model_info(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+
+        args = context.args or []
+        if args:
+            model_name = args[0].strip()
+        else:
+            model_name = (
+                self._model_preferences_store.get_user_model(user_id) or self._default_model
+            )
+
+        try:
+            data = await self._ollama_client.show_model(model_name)
+        except OllamaError as error:
+            if "not found" in str(error).lower():
+                await update.effective_message.reply_text(
+                    self._warning(
+                        self._i18n.t("models.info_not_found", locale=locale, model=model_name)
+                    ),
+                    reply_markup=self._main_keyboard(locale),
+                )
+            else:
+                await update.effective_message.reply_text(
+                    self._error(str(error)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+            return
+        except (OllamaTimeoutError, OllamaConnectionError) as error:
+            await update.effective_message.reply_text(
+                self._error(str(error)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        # Build info card
+        modelfile = data.get("modelfile", "")
+        details = data.get("details", {})
+        family = details.get("family", "—")
+        param_size = details.get("parameter_size", "—")
+        quant = details.get("quantization_level", "—")
+        arch = details.get("architecture", details.get("family", "—"))
+        size_bytes = data.get("size", 0)
+        size_mb = size_bytes / 1_048_576 if size_bytes else 0
+
+        # Extract system prompt if present
+        system_lines = [
+            line.removeprefix("SYSTEM ").strip()
+            for line in modelfile.splitlines()
+            if line.upper().startswith("SYSTEM ")
+        ]
+        system_prompt = system_lines[0][:200] if system_lines else None
+
+        lines = [
+            f"<b>{model_name}</b>",
+            "",
+            f"🏗 <b>Family:</b> {family}",
+            f"⚙️ <b>Params:</b> {param_size}",
+            f"🗜 <b>Quant:</b> {quant}",
+            f"📐 <b>Arch:</b> {arch}",
+        ]
+        if size_mb:
+            lines.append(f"💾 <b>Size:</b> {size_mb:.0f} MB")
+        if system_prompt:
+            lines.append(f"\n📝 <b>System:</b> {system_prompt}")
+
+        await update.effective_message.reply_text(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=self._main_keyboard(locale),
+        )
 
     async def select_file_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
@@ -2996,10 +3293,13 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("askfile", handlers.askfile))
     application.add_handler(CommandHandler("cancel", handlers.cancel))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
+    application.add_handler(CommandHandler("deletemodel", handlers.delete_model))
+    application.add_handler(CommandHandler("info", handlers.model_info))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
     application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))
     application.add_handler(CallbackQueryHandler(handlers.select_file_callback, pattern=r"^file:"))
     application.add_handler(CallbackQueryHandler(handlers.clear_callback, pattern=r"^clear:"))
+    application.add_handler(CallbackQueryHandler(handlers.delete_model_callback, pattern=r"^delmod:"))
     application.add_handler(
         MessageHandler(
             filters.Regex(handlers.quick_actions_regex()),
