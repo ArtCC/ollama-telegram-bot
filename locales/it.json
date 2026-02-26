@@ -30,7 +30,9 @@
       "ask_file": "💬 Chiedi",
       "add_file": "📤 Aggiungi file",
       "preview": "🖼️ Anteprima",
-      "close": "✖️ Chiudi"
+      "close": "✖️ Chiudi",
+      "download": "⬇️ Scarica",
+      "open_web": "🌐 Web"
     },
     "input_placeholder": "Scrivi un messaggio o usa i pulsanti…"
   },
@@ -91,7 +93,12 @@
     "install_hint": "Installa in locale con: ollama pull <model>",
     "page_status": "Pagina {page}/{pages}",
     "no_matches": "Nessun modello web corrisponde alla tua ricerca. Prova con un altro termine.",
-    "no_models_available": "Al momento non ci sono modelli web disponibili."
+    "no_models_available": "Al momento non ci sono modelli web disponibili.",
+    "detail_title": "Modello: {model}\nScegli un'azione:",
+    "download_started": "⏳ Download di {model} in corso… potrebbe richiedere diversi minuti.",
+    "download_done": "✅ {model} installato correttamente. Usa /models per selezionarlo.",
+    "download_failed": "❌ Errore durante il download di {model}: {error}",
+    "already_downloading": "⏳ {model} è già in fase di download, attendi."
   },
   "image": {
     "default_prompt": "Descrivi questa immagine in dettaglio: identifica tutti gli oggetti visibili, persone, testi, insegne, colori e il contesto o la scena generale.",

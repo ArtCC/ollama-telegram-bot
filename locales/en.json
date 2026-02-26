@@ -30,7 +30,9 @@
       "ask_file": "💬 Ask",
       "add_file": "📤 Add file",
       "preview": "🖼️ Preview",
-      "close": "✖️ Close"
+      "close": "✖️ Close",
+      "download": "⬇️ Download",
+      "open_web": "🌐 Web"
     },
     "input_placeholder": "Write a message or use buttons…"
   },
@@ -91,7 +93,12 @@
     "install_hint": "Install locally with: ollama pull <model>",
     "page_status": "Page {page}/{pages}",
     "no_matches": "No web models match your search. Try another term.",
-    "no_models_available": "No web models are currently available."
+    "no_models_available": "No web models are currently available.",
+    "detail_title": "Model: {model}\nChoose an action:",
+    "download_started": "⏳ Downloading {model}… this may take several minutes.",
+    "download_done": "✅ {model} installed successfully. Use /models to select it.",
+    "download_failed": "❌ Failed to download {model}: {error}",
+    "already_downloading": "⏳ {model} is already being downloaded, please wait."
   },
   "image": {
     "default_prompt": "Describe this image in detail: identify all visible objects, people, text, signs, colours, and the overall context or scene.",

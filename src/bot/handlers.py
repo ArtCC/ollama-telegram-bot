@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import io
 import logging
@@ -51,6 +52,8 @@ MODEL_CLOSE_ACTION = "__close__"
 WEB_MODEL_REFRESH_ACTION = "__refresh__"
 WEB_MODEL_PAGE_ACTION_PREFIX = "__page__:"
 WEB_MODEL_CLOSE_ACTION = "__close__"
+WEB_MODEL_DETAIL_ACTION = "__detail__:"
+WEB_MODEL_DOWNLOAD_ACTION = "__download__:"
 FILE_PAGE_ACTION = "page"
 FILE_TOGGLE_ACTION = "toggle"
 FILE_DELETE_ACTION = "delete"
@@ -107,6 +110,7 @@ class BotHandlers:
         self._quick_action_map = self._build_quick_action_map()
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
+        self._model_downloads_in_progress: set[str] = set()
         self._askfile_target_by_user: dict[int, int] = {}
         self._upload_mode_users: set[int] = set()
 
@@ -217,6 +221,13 @@ class BotHandlers:
             "orchestrator.switched_model",
             "orchestrator.task_vision",
             "orchestrator.task_code",
+            "web_models.detail_title",
+            "web_models.download_started",
+            "web_models.download_done",
+            "web_models.download_failed",
+            "web_models.already_downloading",
+            "ui.buttons.download",
+            "ui.buttons.open_web",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -912,6 +923,113 @@ class BotHandlers:
             if not page_raw.isdigit():
                 return
             await self._show_web_models_page(update, int(page_raw))
+            return
+
+        if action.startswith(WEB_MODEL_DETAIL_ACTION):
+            model_name = action.removeprefix(WEB_MODEL_DETAIL_ACTION).strip()
+            if not model_name:
+                return
+            await self._edit_models_message(
+                query=query,
+                text=self._info(
+                    self._i18n.t("web_models.detail_title", locale=locale, model=model_name)
+                ),
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.download", locale=locale),
+                                callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DOWNLOAD_ACTION}{model_name}",
+                            ),
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.open_web", locale=locale),
+                                url=f"https://ollama.com/library/{model_name}",
+                            ),
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.close", locale=locale),
+                                callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CLOSE_ACTION}",
+                            ),
+                        ],
+                    ]
+                ),
+            )
+            return
+
+        if action.startswith(WEB_MODEL_DOWNLOAD_ACTION):
+            model_name = action.removeprefix(WEB_MODEL_DOWNLOAD_ACTION).strip()
+            if not model_name:
+                return
+            if model_name in self._model_downloads_in_progress:
+                await query.answer(
+                    self._i18n.t(
+                        "web_models.already_downloading", locale=locale, model=model_name
+                    ),
+                    show_alert=True,
+                )
+                return
+            self._model_downloads_in_progress.add(model_name)
+            try:
+                await self._edit_models_message(
+                    query=query,
+                    text=self._info(
+                        self._i18n.t(
+                            "web_models.download_started", locale=locale, model=model_name
+                        )
+                    ),
+                    reply_markup=InlineKeyboardMarkup([]),
+                )
+            except Exception as edit_error:  # noqa: BLE001
+                logger.debug("Could not edit message for download start: %s", edit_error)
+            asyncio.create_task(
+                self._background_pull_model(
+                    chat_id=query.message.chat_id,
+                    model_name=model_name,
+                    locale=locale,
+                    context=context,
+                )
+            )
+            return
+
+    async def _background_pull_model(
+        self,
+        *,
+        chat_id: int,
+        model_name: str,
+        locale: str,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        try:
+            await self._ollama_client.pull_model(model_name)
+            text = self._success(
+                self._i18n.t("web_models.download_done", locale=locale, model=model_name)
+            )
+        except (OllamaError, OllamaTimeoutError, OllamaConnectionError) as error:
+            logger.error("pull_model_failed model=%s error=%s", model_name, error)
+            text = self._error(
+                self._i18n.t(
+                    "web_models.download_failed", locale=locale, model=model_name, error=str(error)
+                )
+            )
+        except Exception as error:  # noqa: BLE001
+            logger.exception("pull_model_unexpected_error model=%s error=%s", model_name, error)
+            text = self._error(
+                self._i18n.t(
+                    "web_models.download_failed", locale=locale, model=model_name, error=str(error)
+                )
+            )
+        finally:
+            self._model_downloads_in_progress.discard(model_name)
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=text)
+        except Exception as notify_error:  # noqa: BLE001
+            logger.warning(
+                "pull_model_notify_failed chat_id=%s model=%s error=%s",
+                chat_id,
+                model_name,
+                notify_error,
+            )
 
     async def select_file_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
@@ -2610,7 +2728,7 @@ class BotHandlers:
             row.append(
                 InlineKeyboardButton(
                     text=model,
-                    url=f"https://ollama.com/library/{model}",
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DETAIL_ACTION}{model}",
                 )
             )
             if len(row) == 2:

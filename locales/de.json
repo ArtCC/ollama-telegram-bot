@@ -30,7 +30,9 @@
       "ask_file": "💬 Fragen",
       "add_file": "📤 Datei hinzufügen",
       "preview": "🖼️ Vorschau",
-      "close": "✖️ Schließen"
+      "close": "✖️ Schließen",
+      "download": "⬇️ Herunterladen",
+      "open_web": "🌐 Web"
     },
     "input_placeholder": "Nachricht schreiben oder Schaltflächen verwenden…"
   },
@@ -91,7 +93,12 @@
     "install_hint": "Lokal installieren mit: ollama pull <model>",
     "page_status": "Seite {page}/{pages}",
     "no_matches": "Keine Web-Modelle passen zu deiner Suche. Probiere einen anderen Begriff.",
-    "no_models_available": "Derzeit sind keine Web-Modelle verfügbar."
+    "no_models_available": "Derzeit sind keine Web-Modelle verfügbar.",
+    "detail_title": "Modell: {model}\nWähle eine Aktion:",
+    "download_started": "⏳ {model} wird heruntergeladen… das kann mehrere Minuten dauern.",
+    "download_done": "✅ {model} erfolgreich installiert. Wähle es mit /models aus.",
+    "download_failed": "❌ Fehler beim Herunterladen von {model}: {error}",
+    "already_downloading": "⏳ {model} wird bereits heruntergeladen, bitte warte."
   },
   "image": {
     "default_prompt": "Beschreibe dieses Bild im Detail: erkenne alle sichtbaren Objekte, Personen, Texte, Schilder, Farben und den allgemeinen Kontext oder die Szene.",

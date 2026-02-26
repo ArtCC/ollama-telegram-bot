@@ -21,6 +21,10 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added **model orchestrator** (`src/services/model_orchestrator.py`): automatically selects the best available local model per request — vision model for image requests, code-specialised model for programming questions (`codellama`, `deepseek-coder`, `codegemma`, `codestral`, …), user-preferred model for general chat.
 - Added pre-flight vision capability check in `on_image`: warns the user immediately when no vision-capable model is installed, instead of silently forwarding the image to an incompatible model.
 - Added detailed observability logging across the full image pipeline: task detection, model selection, payload size, raw response preview, fallback path, and matched missing-image patterns.
+- Added **`/webmodels` download flow**: tapping a model in the web catalog now shows a detail card with two inline buttons — **⬇️ Download** (calls `POST /api/pull` on the local Ollama daemon and runs the download in the background) and **🌐 Web** (opens `https://ollama.com/library/<model>`).
+- Added `pull_model()` method to `OllamaClient` (`POST /api/pull`, no timeout) with structured error mapping to `OllamaError`/`OllamaTimeoutError`/`OllamaConnectionError`.
+- Added in-progress download guard: a second tap on the same model while it is downloading shows an inline alert instead of starting a duplicate pull.
+- Added chat notification on download completion: bot sends a ✅ success or ❌ failure message directly to the user after the background pull finishes.
 
 ### Changed
 - Updated local and web model pagination to render over the same message (no new message per page when edit is possible).

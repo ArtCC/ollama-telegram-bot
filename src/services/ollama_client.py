@@ -218,6 +218,29 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama web catalog failure") from last_error
         raise OllamaError("Unexpected Ollama web catalog failure")
 
+    async def pull_model(self, model_name: str) -> None:
+        """Download a model from the Ollama registry via POST /api/pull."""
+        started_at = monotonic()
+        logger.info("ollama_pull_model_start model=%s", model_name)
+        try:
+            async with httpx.AsyncClient(timeout=None) as client:
+                response = await client.post(
+                    f"{self._base_url}/api/pull",
+                    json={"model": model_name, "stream": False},
+                )
+            response.raise_for_status()
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError(f"Model pull timed out: {model_name}") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError(f"Could not connect to Ollama to pull {model_name}") from error
+        except httpx.HTTPStatusError as error:
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Ollama pull returned HTTP {error.response.status_code}: {detail}"
+            ) from error
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info("ollama_pull_model_done model=%s elapsed_ms=%d", model_name, elapsed_ms)
+
     async def chat(
         self,
         *,

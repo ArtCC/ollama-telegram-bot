@@ -125,6 +125,8 @@ ollama-telegram-bot/
 - [x] Ollama Vision API compliance: `images` field correctly placed inside the user message object for `/api/chat`; `images`, `system`, and `keep_alive` at root level for `/api/generate`.
 - [x] Multilingual `_looks_like_missing_image_response` detection covering EN/ES/DE/FR/IT with narrowed patterns to eliminate false positives.
 - [x] Full observability logging across the image pipeline (task detection, model selection, payload details, raw response preview, fallback reasons).
+- [x] **`/webmodels` download flow**: tapping a model in the web catalog now opens a detail card with two inline buttons — **⬇️ Download** (triggers `ollama pull` via `POST /api/pull` in the background) and **🌐 Web** (opens the Ollama.com library page for that model).
+- [x] Background model download with in-progress guard: duplicate download attempts are rejected with an inline alert, and the result (success or error) is sent as a new chat message on completion.
 
 ## Files Context (MVP)
 
