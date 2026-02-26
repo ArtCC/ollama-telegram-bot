@@ -11,6 +11,7 @@ from typing import Protocol
 class ConversationTurn:
     role: str
     content: str
+    images: list[str] | None = None
 
 
 class ContextStore(Protocol):

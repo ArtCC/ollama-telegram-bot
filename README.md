@@ -116,6 +116,7 @@ ollama-telegram-bot/
 - [x] Improved image ingestion prompt: detailed description covering objects, text, colours, and scene context.
 - [x] Image-related RAG instructions always injected when image assets are in context (no keyword dependency).
 - [x] Document confirmation message includes asset ID and `/askfile` hint for immediate use.
+- [x] Image RAG aligned with Ollama `/api/chat` spec: stored image bytes are re-sent in the `images` field of the conversation history message, giving the model actual pixel data instead of a text label when answering follow-up questions.
 
 ## Files Context (MVP)
 
@@ -130,6 +131,7 @@ ollama-telegram-bot/
 - Use `/askfile <id> <question>` to force a response based on one specific file.
 - The model uses selected files as additional context when answering new requests.
 - For documents with caption, the bot also performs immediate review while keeping the file saved.
+- For images, the original bytes are stored alongside the analysis so the model receives real pixel data (not just a description) when you ask follow-up questions later.
 - Stored assets are automatically purged after `ASSET_TTL_DAYS` days (default: 30).
 
 ## Configuration

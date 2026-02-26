@@ -19,6 +19,7 @@ class UserAsset:
     is_selected: bool
     created_at: str
     updated_at: str
+    image_base64: str = ""
 
 
 class UserAssetsStore:
@@ -62,6 +63,13 @@ class UserAssetsStore:
                 )
             except sqlite3.OperationalError:
                 pass  # Column already exists
+            # Schema migration: add image_base64 column for image RAG replay
+            try:
+                connection.execute(
+                    "ALTER TABLE user_assets ADD COLUMN image_base64 TEXT NOT NULL DEFAULT ''"
+                )
+            except sqlite3.OperationalError:
+                pass  # Column already exists
             connection.commit()
 
     def add_asset(
@@ -74,6 +82,7 @@ class UserAssetsStore:
         size_bytes: int,
         content_text: str,
         is_selected: bool = True,
+        image_base64: str = "",
     ) -> int:
         content_hash = self._compute_hash(content_text)
         with self._connect() as connection:
@@ -94,8 +103,9 @@ class UserAssetsStore:
                     size_bytes,
                     content_text,
                     is_selected,
-                    content_hash
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    content_hash,
+                    image_base64
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     user_id,
@@ -106,6 +116,7 @@ class UserAssetsStore:
                     content_text,
                     1 if is_selected else 0,
                     content_hash,
+                    image_base64,
                 ),
             )
             connection.commit()
@@ -115,7 +126,7 @@ class UserAssetsStore:
         with self._connect() as connection:
             rows = connection.execute(
                 """
-                SELECT id, user_id, asset_kind, asset_name, mime_type, size_bytes, content_text, is_selected, created_at, updated_at
+                SELECT id, user_id, asset_kind, asset_name, mime_type, size_bytes, content_text, is_selected, created_at, updated_at, image_base64
                 FROM user_assets
                 WHERE user_id = ?
                 ORDER BY id DESC
@@ -128,7 +139,7 @@ class UserAssetsStore:
         with self._connect() as connection:
             row = connection.execute(
                 """
-                SELECT id, user_id, asset_kind, asset_name, mime_type, size_bytes, content_text, is_selected, created_at, updated_at
+                SELECT id, user_id, asset_kind, asset_name, mime_type, size_bytes, content_text, is_selected, created_at, updated_at, image_base64
                 FROM user_assets
                 WHERE user_id = ? AND id = ?
                 """,
@@ -234,6 +245,7 @@ class UserAssetsStore:
                     is_selected=asset.is_selected,
                     created_at=asset.created_at,
                     updated_at=asset.updated_at,
+                    image_base64=asset.image_base64,
                 )
             )
             total += len(text)
@@ -261,4 +273,5 @@ class UserAssetsStore:
             is_selected=bool(int(row[7])),
             created_at=str(row[8]),
             updated_at=str(row[9]),
+            image_base64=str(row[10]) if len(row) > 10 else "",
         )

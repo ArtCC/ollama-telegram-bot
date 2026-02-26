@@ -515,20 +515,26 @@ class BotHandlers:
         started_at = monotonic()
         agent_name = self._select_agent(prompt)
         system_instruction = self._agent_system_instruction(agent_name, locale)
-        prompt_with_asset = self._augment_prompt_with_assets(
-            prompt=prompt,
-            assets=[asset],
-            force_single=True,
-        )
+
+        # Image assets: inject analysis as prior assistant turn (avoids 'I can\'t see' refusals)
+        # Document assets: augment user prompt with text context
+        extra_turns = self._build_image_context_turns([asset])
+        if extra_turns:
+            prompt_to_send = prompt
+        else:
+            prompt_to_send = self._augment_prompt_with_assets(
+                prompt=prompt, assets=[asset], force_single=True
+            )
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
         try:
             ollama_response = await self._generate_response(
                 user_id=user_id,
                 model=model,
-                prompt=prompt_with_asset,
+                prompt=prompt_to_send,
                 turns=turns,
                 system_instruction=system_instruction,
+                extra_turns=extra_turns or None,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -1261,7 +1267,30 @@ class BotHandlers:
         started_at = monotonic()
         agent_name = self._select_agent(user_text)
         system_instruction = self._agent_system_instruction(agent_name, locale)
-        prompt_with_assets = self._augment_prompt_with_selected_assets(user_id=user_id, prompt=user_text)
+
+        # Retrieve selected assets and split by kind
+        try:
+            selected_assets = self._user_assets_store.search_selected_assets(
+                user_id=user_id,
+                query=user_text,
+                limit=self._files_context_max_items,
+                max_chars_total=self._files_context_max_chars,
+            )
+        except Exception as err:
+            logger.warning("selected_assets_context_failed user_id=%s error=%s", user_id, err)
+            selected_assets = []
+
+        image_assets = [a for a in selected_assets if a.asset_kind == "image"]
+        doc_assets = [a for a in selected_assets if a.asset_kind != "image"]
+
+        # Image assets injected as prior assistant turns; doc assets augment the prompt
+        extra_turns = self._build_image_context_turns(image_assets)
+        if doc_assets:
+            prompt_to_send = self._augment_prompt_with_assets(
+                prompt=user_text, assets=doc_assets, force_single=False
+            )
+        else:
+            prompt_to_send = user_text
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
@@ -1269,9 +1298,10 @@ class BotHandlers:
             ollama_response = await self._generate_response(
                 user_id=user_id,
                 model=model,
-                prompt=prompt_with_assets,
+                prompt=prompt_to_send,
                 turns=turns,
                 system_instruction=system_instruction,
+                extra_turns=extra_turns or None,
             )
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
@@ -1442,6 +1472,7 @@ class BotHandlers:
                 size_bytes=image_bytes_size,
                 content_text=ollama_response.text,
                 is_selected=True,
+                image_base64=image_base64,
             )
         except Exception as error:
             logger.warning("image_asset_save_failed user_id=%s error=%s", user_id, error)
@@ -1637,8 +1668,11 @@ class BotHandlers:
         prompt: str,
         turns: list[ConversationTurn],
         system_instruction: str,
+        extra_turns: list[ConversationTurn] | None = None,
     ):
         turns_for_model: list[ConversationTurn] = [ConversationTurn(role="system", content=system_instruction)]
+        if extra_turns:
+            turns_for_model.extend(extra_turns)
         turns_for_model.extend(turns)
 
         if self._use_chat_api:
@@ -1828,6 +1862,44 @@ class BotHandlers:
 
         single_line = " ".join(text.split())
         return self._truncate_text(single_line, max_chars=95)
+
+    def _clean_image_text(self, content_text: str) -> str:
+        """Strip legacy format labels to return plain analysis text."""
+        return re.sub(
+            r"^(?:image prompt:[^\n]*\n+)?(?:image analysis result[^:\n]*:\n+)?",
+            "",
+            content_text.strip(),
+            flags=re.IGNORECASE,
+        ).strip() or content_text.strip()
+
+    def _build_image_context_turns(self, assets: list[UserAsset]) -> list[ConversationTurn]:
+        """Build synthetic user+assistant turn pairs for stored image assets.
+
+        Per the Ollama /api/chat spec, images are passed as base64 strings in
+        the ``images`` field of the user message object.  When the original bytes
+        are available they are re-sent so the model actually sees the pixels again
+        instead of just a text label.  The following assistant turn with the stored
+        analysis is included so the model can answer follow-up questions grounded
+        on both the actual image and the prior description.
+        """
+        turns: list[ConversationTurn] = []
+        for asset in assets:
+            if asset.asset_kind != "image":
+                continue
+            analysis = self._clean_image_text(asset.content_text)
+            if not analysis:
+                continue
+            # Include the original image bytes when stored (Ollama API: message.images)
+            user_turn_images: list[str] | None = [asset.image_base64] if asset.image_base64 else None
+            turns.append(
+                ConversationTurn(
+                    role="user",
+                    content=f"[Image uploaded: {asset.asset_name}]",
+                    images=user_turn_images,
+                )
+            )
+            turns.append(ConversationTurn(role="assistant", content=analysis))
+        return turns
 
     def _trim_document_text(self, text: str) -> str:
         cleaned = text.strip()

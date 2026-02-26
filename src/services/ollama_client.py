@@ -581,12 +581,15 @@ class OllamaClient:
         return "\n".join(context_lines)
 
     @staticmethod
-    def _compose_messages(prompt: str, context_turns: list[ConversationTurn]) -> list[dict[str, str]]:
-        messages: list[dict[str, str]] = []
+    def _compose_messages(prompt: str, context_turns: list[ConversationTurn]) -> list[dict[str, Any]]:
+        messages: list[dict[str, Any]] = []
         for turn in context_turns:
             if turn.role not in {"system", "user", "assistant", "tool"}:
                 continue
-            messages.append({"role": turn.role, "content": turn.content})
+            msg: dict[str, Any] = {"role": turn.role, "content": turn.content}
+            if turn.images:
+                msg["images"] = turn.images
+            messages.append(msg)
 
         messages.append({"role": "user", "content": prompt})
         return messages
