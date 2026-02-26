@@ -7,6 +7,7 @@
     "models": "Lister ou sélectionner un modèle",
     "webmodels": "Parcourir les modèles web installables",
     "files": "Lister vos fichiers enregistrés",
+    "askfile": "Poser une question avec un fichier",
     "currentmodel": "Afficher votre modèle actuel"
   },
   "ui": {
@@ -25,13 +26,16 @@
       "refresh_models": "Actualiser les modèles",
       "confirm": "✅ Confirmer",
       "cancel": "❌ Annuler",
+      "ask_file": "💬 Demander",
       "close": "✖️ Fermer"
     },
     "input_placeholder": "Écrivez un message ou utilisez les boutons…"
   },
   "messages": {
     "start_welcome": "✨ <b>Bienvenue !</b> Envoyez un message et je demanderai une réponse à Ollama.\nUtilisez les boutons ci-dessous ou les commandes slash.",
-    "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/files - Gérer vos documents et images enregistrés\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
+    "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/files - Gérer vos documents et images enregistrés\n/askfile - Poser une question sur un fichier précis : /askfile <id> <question>\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
+    "askfile_prompt": "Envoyez maintenant votre question pour le fichier #{id} ({name}).",
+    "askfile_usage": "Utilisation : /askfile <id_fichier> <question>. Exemple : /askfile 12 Résume ce fichier.",
     "please_send_non_empty": "Veuillez envoyer un message non vide.",
     "voice_disabled": "Les messages vocaux et audio sont désactivés. Veuillez envoyer des messages texte ou des images.",
     "clear_confirm": "<b>Effacer le contexte ?</b>\nCela supprimera votre mémoire de chat actuelle.",

@@ -53,6 +53,7 @@ WEB_MODEL_CLOSE_ACTION = "__close__"
 FILE_PAGE_ACTION = "page"
 FILE_TOGGLE_ACTION = "toggle"
 FILE_DELETE_ACTION = "delete"
+FILE_ASK_ACTION = "ask"
 FILE_CLOSE_ACTION = "close"
 ICON_INFO = "ℹ️"
 ICON_SUCCESS = "✅"
@@ -98,6 +99,7 @@ class BotHandlers:
         self._quick_action_map = self._build_quick_action_map()
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
+        self._askfile_target_by_user: dict[int, int] = {}
 
     @staticmethod
     def required_i18n_keys() -> tuple[str, ...]:
@@ -109,6 +111,7 @@ class BotHandlers:
             "commands.models",
             "commands.webmodels",
             "commands.files",
+            "commands.askfile",
             "commands.currentmodel",
             "ui.buttons.models",
             "ui.buttons.web_models",
@@ -125,10 +128,13 @@ class BotHandlers:
             "ui.buttons.confirm",
             "ui.buttons.cancel",
             "ui.buttons.close",
+            "ui.buttons.ask_file",
             "ui.input_placeholder",
             "messages.start_welcome",
             "messages.help",
             "messages.please_send_non_empty",
+            "messages.askfile_usage",
+            "messages.askfile_prompt",
             "messages.voice_disabled",
             "messages.clear_confirm",
             "messages.clear_cancelled",
@@ -207,6 +213,7 @@ class BotHandlers:
                     description=self._i18n.t("commands.webmodels", locale=locale),
                 ),
                 BotCommand(command="files", description=self._i18n.t("commands.files", locale=locale)),
+                BotCommand(command="askfile", description=self._i18n.t("commands.askfile", locale=locale)),
                 BotCommand(
                     command="currentmodel",
                     description=self._i18n.t("commands.currentmodel", locale=locale),
@@ -433,6 +440,125 @@ class BotHandlers:
                 total_pages=total_pages,
             ),
         )
+
+    async def askfile(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update, apply_rate_limit=True):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        self._log_user_event("command_askfile", update)
+
+        if not context.args or len(context.args) < 2:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("messages.askfile_usage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        asset_id_raw = context.args[0].strip()
+        prompt = " ".join(context.args[1:]).strip()
+        if not asset_id_raw.isdigit() or not prompt:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("messages.askfile_usage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        asset_id = int(asset_id_raw)
+        try:
+            asset = self._user_assets_store.get_asset(user_id, asset_id)
+        except Exception as error:
+            logger.exception("Failed to read askfile asset: %s", error)
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if not asset:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("files.not_found", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        await self._answer_with_asset(
+            update=update,
+            locale=locale,
+            user_id=user_id,
+            asset=asset,
+            prompt=prompt,
+        )
+
+    async def _answer_with_asset(
+        self,
+        *,
+        update: Update,
+        locale: str,
+        user_id: int,
+        asset: UserAsset,
+        prompt: str,
+    ) -> None:
+        turns = self._context_store.get_turns(user_id)
+        model = self._get_user_model(user_id)
+        started_at = monotonic()
+        agent_name = self._select_agent(prompt)
+        system_instruction = self._agent_system_instruction(agent_name, locale)
+        prompt_with_asset = self._augment_prompt_with_assets(
+            prompt=prompt,
+            assets=[asset],
+            force_single=True,
+        )
+
+        await update.effective_chat.send_action(action=ChatAction.TYPING)
+        try:
+            ollama_response = await self._generate_response(
+                user_id=user_id,
+                model=model,
+                prompt=prompt_with_asset,
+                turns=turns,
+                system_instruction=system_instruction,
+            )
+        except OllamaTimeoutError:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama askfile error: %s", error)
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_generic", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        self._context_store.append(user_id, role="user", content=f"[AskFile #{asset.id}] {prompt}")
+        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "askfile_completed user_id=%s model=%s file_id=%d agent=%s input_chars=%d output_chars=%d elapsed_ms=%d",
+            user_id,
+            model,
+            asset.id,
+            agent_name,
+            len(prompt),
+            len(ollama_response.text),
+            elapsed_ms,
+        )
+
+        for chunk in split_message(ollama_response.text):
+            await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
 
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
@@ -774,6 +900,42 @@ class BotHandlers:
                 return
 
             await self._show_files_page(update=update, page=page)
+            return
+
+        if action == FILE_ASK_ACTION and len(parts) >= 2:
+            asset_id_raw = parts[1]
+            if not asset_id_raw.isdigit():
+                return
+            asset_id = int(asset_id_raw)
+            try:
+                asset = self._user_assets_store.get_asset(user_id, asset_id)
+            except Exception as error:
+                logger.exception("Failed to fetch file for ask action: %s", error)
+                await query.message.reply_text(
+                    self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            if not asset:
+                await query.message.reply_text(
+                    self._warning(self._i18n.t("files.not_found", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            self._askfile_target_by_user[user_id] = asset_id
+            await query.message.reply_text(
+                self._info(
+                    self._i18n.t(
+                        "messages.askfile_prompt",
+                        locale=locale,
+                        id=asset.id,
+                        name=asset.asset_name,
+                    )
+                ),
+                reply_markup=self._main_keyboard(locale),
+            )
 
     async def _show_files_page(self, update: Update, page: int) -> None:
         query = update.callback_query
@@ -1038,6 +1200,34 @@ class BotHandlers:
             return
 
         user_id = update.effective_user.id
+        pending_asset_id = self._askfile_target_by_user.pop(user_id, None)
+        if pending_asset_id is not None:
+            try:
+                pending_asset = self._user_assets_store.get_asset(user_id, pending_asset_id)
+            except Exception as error:
+                logger.exception("Failed to load pending askfile asset: %s", error)
+                await update.effective_message.reply_text(
+                    self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            if not pending_asset:
+                await update.effective_message.reply_text(
+                    self._warning(self._i18n.t("files.not_found", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            await self._answer_with_asset(
+                update=update,
+                locale=locale,
+                user_id=user_id,
+                asset=pending_asset,
+                prompt=user_text,
+            )
+            return
+
         turns = self._context_store.get_turns(user_id)
         model = self._get_user_model(user_id)
         started_at = monotonic()
@@ -1561,6 +1751,43 @@ class BotHandlers:
         mib = num_bytes / (1024 * 1024)
         return f"{mib:.1f} MB"
 
+    @staticmethod
+    def _format_size_compact(num_bytes: int) -> str:
+        if num_bytes < 1024:
+            return f"{num_bytes} B"
+        if num_bytes < 1024 * 1024:
+            return f"{num_bytes / 1024:.0f} KB"
+        return f"{num_bytes / (1024 * 1024):.1f} MB"
+
+    @staticmethod
+    def _truncate_text(text: str, *, max_chars: int) -> str:
+        cleaned = text.strip()
+        if len(cleaned) <= max_chars:
+            return cleaned
+        return f"{cleaned[: max_chars - 1]}…"
+
+    def _asset_preview(self, text: str) -> str:
+        if not text.strip():
+            return "—"
+
+        image_prompt_match = re.search(r"Image prompt:\s*(.+)", text, flags=re.IGNORECASE)
+        if image_prompt_match:
+            prompt = image_prompt_match.group(1).strip()
+            if prompt:
+                return self._truncate_text(f"🖼️ {prompt}", max_chars=95)
+
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if lines:
+            first_line = lines[0]
+            if first_line.lower().startswith("document name:") and len(lines) > 1:
+                first_line = lines[1]
+
+            if len(first_line) > 8:
+                return self._truncate_text(f"📄 {first_line}", max_chars=95)
+
+        single_line = " ".join(text.split())
+        return self._truncate_text(single_line, max_chars=95)
+
     def _trim_document_text(self, text: str) -> str:
         cleaned = text.strip()
         if len(cleaned) <= self._document_max_chars:
@@ -1654,7 +1881,11 @@ class BotHandlers:
         for asset in assets:
             selected_marker = "✅" if asset.is_selected else "☑️"
             kind = "doc" if asset.asset_kind == "document" else "img"
-            lines.append(f"- #{asset.id} [{kind}] {asset.asset_name} {selected_marker}")
+            asset_name = self._truncate_text(asset.asset_name, max_chars=38)
+            size = self._format_size_compact(asset.size_bytes)
+            preview = self._asset_preview(asset.content_text)
+            lines.append(f"- #{asset.id} [{kind}] {asset_name} {selected_marker} ({size})")
+            lines.append(f"  {preview}")
         lines.append("")
         lines.append(self._i18n.t("files.page_status", locale=locale, page=page, pages=total_pages))
         lines.append(self._i18n.t("files.instructions", locale=locale))
@@ -1673,6 +1904,10 @@ class BotHandlers:
             toggle_label = f"✅ #{asset.id}" if asset.is_selected else f"☑️ #{asset.id}"
             rows.append(
                 [
+                    InlineKeyboardButton(
+                        text=f"{self._i18n.t('ui.buttons.ask_file', locale=locale)} #{asset.id}",
+                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_ASK_ACTION}:{asset.id}",
+                    ),
                     InlineKeyboardButton(
                         text=toggle_label,
                         callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_TOGGLE_ACTION}:{asset.id}:{page}",
@@ -1729,9 +1964,40 @@ class BotHandlers:
         if not selected_assets:
             return prompt
 
-        lines = ["Selected user files context:"]
-        for asset in selected_assets:
-            lines.append(f"[File #{asset.id} - {asset.asset_name}]")
+        return self._augment_prompt_with_assets(prompt=prompt, assets=selected_assets, force_single=False)
+
+    def _augment_prompt_with_assets(
+        self,
+        *,
+        prompt: str,
+        assets: list[UserAsset],
+        force_single: bool,
+    ) -> str:
+        if not assets:
+            return prompt
+
+        has_image_assets = any(asset.asset_kind == "image" for asset in assets)
+        prompt_mentions_image = bool(
+            re.search(r"\b(image|images|photo|picture|imagen|imágenes|foto|fotos)\b", prompt, flags=re.IGNORECASE)
+        )
+
+        lines = [
+            "Important context instructions:",
+            "- The following blocks are stored knowledge extracted from user files.",
+            "- You MUST answer using this stored context when relevant.",
+            "- Do NOT ask the user to resend the same file if context is already provided below.",
+        ]
+        if force_single:
+            lines.append("- You MUST prioritize only the single file provided below for this answer.")
+        if has_image_assets and prompt_mentions_image:
+            lines.append(
+                "- For image-related questions, use the stored image analysis below as your visual source of truth."
+            )
+
+        lines.append("")
+        lines.append("Selected user files context:")
+        for asset in assets:
+            lines.append(f"[File #{asset.id} - {asset.asset_name} | type={asset.asset_kind}]")
             lines.append(asset.content_text)
             lines.append("")
         lines.append(f"User request: {prompt}")
@@ -1926,6 +2192,7 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("models", handlers.models))
     application.add_handler(CommandHandler("webmodels", handlers.web_models))
     application.add_handler(CommandHandler("files", handlers.files))
+    application.add_handler(CommandHandler("askfile", handlers.askfile))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
     application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))

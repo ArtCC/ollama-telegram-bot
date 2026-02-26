@@ -7,6 +7,7 @@
     "models": "Listar o seleccionar modelo",
     "webmodels": "Explorar modelos web instalables",
     "files": "Listar tus archivos guardados",
+    "askfile": "Preguntar usando un archivo",
     "currentmodel": "Mostrar tu modelo actual"
   },
   "ui": {
@@ -25,13 +26,16 @@
       "refresh_models": "Actualizar modelos",
       "confirm": "✅ Confirmar",
       "cancel": "❌ Cancelar",
+      "ask_file": "💬 Preguntar",
       "close": "✖️ Cerrar"
     },
     "input_placeholder": "Escribe un mensaje o usa los botones…"
   },
   "messages": {
     "start_welcome": "✨ <b>¡Bienvenido!</b> Envíame un mensaje y pediré una respuesta a Ollama.\nUsa los botones de abajo o comandos con barra.",
-    "help": "ℹ️ Comandos disponibles:\n/start - Iniciar el bot\n/help - Mostrar esta ayuda\n/health - Comprobar estado de ejecución, base de datos y Ollama\n/clear - Borrar tu contexto\n/models - Listar modelos locales o seleccionar uno con /models <name>\n/webmodels - Explorar modelos web disponibles para instalar\n/files - Gestionar tus documentos e imágenes guardados\n/currentmodel - Mostrar tu modelo activo\n\nPuedes enviar mensajes de texto o imágenes (con instrucciones opcionales en el pie de foto).",
+    "help": "ℹ️ Comandos disponibles:\n/start - Iniciar el bot\n/help - Mostrar esta ayuda\n/health - Comprobar estado de ejecución, base de datos y Ollama\n/clear - Borrar tu contexto\n/models - Listar modelos locales o seleccionar uno con /models <name>\n/webmodels - Explorar modelos web disponibles para instalar\n/files - Gestionar tus documentos e imágenes guardados\n/askfile - Preguntar usando un archivo concreto: /askfile <id> <pregunta>\n/currentmodel - Mostrar tu modelo activo\n\nPuedes enviar mensajes de texto o imágenes (con instrucciones opcionales en el pie de foto).",
+    "askfile_prompt": "Ahora envía tu pregunta para el archivo #{id} ({name}).",
+    "askfile_usage": "Uso: /askfile <id_archivo> <pregunta>. Ejemplo: /askfile 12 Resume este archivo.",
     "please_send_non_empty": "Por favor, envía un mensaje no vacío.",
     "voice_disabled": "Los mensajes de voz y audio están desactivados. Por favor, envía mensajes de texto o imágenes.",
     "clear_confirm": "<b>¿Borrar contexto?</b>\nEsto eliminará tu memoria de chat actual.",

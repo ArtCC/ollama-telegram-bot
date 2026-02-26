@@ -7,6 +7,7 @@
     "models": "List or select model",
     "webmodels": "Browse installable web models",
     "files": "List your saved files",
+    "askfile": "Ask using one file",
     "currentmodel": "Show your current model"
   },
   "ui": {
@@ -25,13 +26,16 @@
       "refresh_models": "Refresh models",
       "confirm": "✅ Confirm",
       "cancel": "❌ Cancel",
+      "ask_file": "💬 Ask",
       "close": "✖️ Close"
     },
     "input_placeholder": "Write a message or use buttons…"
   },
   "messages": {
     "start_welcome": "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\nUse the buttons below or slash commands.",
-    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/askfile - Ask using one specific file: /askfile <id> <question>\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "askfile_prompt": "Now send your question for file #{id} ({name}).",
+    "askfile_usage": "Usage: /askfile <file_id> <question>. Example: /askfile 12 Summarize this file.",
     "please_send_non_empty": "Please send a non-empty message.",
     "voice_disabled": "Voice and audio messages are disabled. Please send text or image messages.",
     "clear_confirm": "<b>Clear context?</b>\nThis will remove your current chat memory.",

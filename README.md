@@ -74,7 +74,7 @@ ollama-telegram-bot/
 - [x] Core bot architecture and environment-based configuration.
 - [x] Docker-first deployment with Compose and GHCR publish workflow.
 - [x] Core conversation flow with contextual chat and error-safe Ollama calls.
-- [x] Base command set and UX (`/start`, `/help`, `/health`, `/clear`, `/models`, `/webmodels`, `/files`, `/currentmodel`).
+- [x] Base command set and UX (`/start`, `/help`, `/health`, `/clear`, `/models`, `/webmodels`, `/files`, `/askfile`, `/currentmodel`).
 - [x] Unified bot UI (slash commands + persistent quick buttons + inline actions).
 - [x] Unified status messaging (`ℹ️ info`, `✅ success`, `⚠️ warning`, `❌ error`).
 - [x] Per-user model management with SQLite persistence.
@@ -116,7 +116,9 @@ ollama-telegram-bot/
 - Open `/files` to:
   - list saved files,
   - select/deselect files to include in context,
-  - delete files you no longer want to keep.
+  - delete files you no longer want to keep,
+  - ask directly from one file using the inline `💬 Ask` button.
+- Use `/askfile <id> <question>` to force a response based on one specific file.
 - The model uses selected files as additional context when answering new requests.
 - For documents with caption, the bot also performs immediate review while keeping the file saved.
 
