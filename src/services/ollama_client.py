@@ -419,6 +419,17 @@ class OllamaClient:
             "keep_alive": keep_alive,
         }
 
+        logger.info(
+            "chat_with_image START model=%s images=%d image_bytes=%s prompt_chars=%d context_turns=%d keep_alive=%s",
+            model,
+            len(images),
+            ",".join(str(len(b)) for b in images),
+            len(prompt),
+            len(context_turns),
+            keep_alive,
+        )
+        logger.debug("chat_with_image payload_messages=%d last_msg_keys=%s", len(messages), list(messages[-1].keys()) if messages else [])
+
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
@@ -434,16 +445,18 @@ class OllamaClient:
                 data = response.json()
                 message = data.get("message") or {}
                 text = str(message.get("content", "")).strip()
+                logger.debug("chat_with_image raw_response_text=%r", text[:300])
                 if not text:
                     raise OllamaError("Empty image chat response from Ollama")
 
                 elapsed_ms = int((monotonic() - started_at) * 1000)
                 logger.info(
-                    "ollama_chat_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d",
+                    "ollama_chat_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d response_chars=%d",
                     model,
                     len(prompt),
                     len(context_turns),
                     elapsed_ms,
+                    len(text),
                 )
                 if self._looks_like_missing_image_response(text):
                     logger.warning(
@@ -460,18 +473,21 @@ class OllamaClient:
                 return OllamaResponse(text=text)
             except httpx.TimeoutException as error:
                 last_error = error
+                logger.warning("chat_with_image TIMEOUT model=%s attempt=%d/%d", model, attempt + 1, self._retries + 1)
                 if attempt < self._retries:
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 raise OllamaTimeoutError("Ollama image chat request timed out") from error
             except httpx.RequestError as error:
                 last_error = error
+                logger.warning("chat_with_image CONNECTION_ERROR model=%s attempt=%d/%d error=%s", model, attempt + 1, self._retries + 1, error)
                 if attempt < self._retries:
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 raise OllamaConnectionError("Could not reach Ollama") from error
             except httpx.HTTPStatusError as error:
                 detail = error.response.text[:300]
+                logger.warning("chat_with_image HTTP_ERROR model=%s status=%d body=%r", model, error.response.status_code, detail)
                 if error.response.status_code in {400, 404, 422}:
                     logger.warning(
                         "ollama_chat_image_http_fallback_generate model=%s status=%d",
@@ -519,6 +535,17 @@ class OllamaClient:
         if keep_alive is not None:
             payload["keep_alive"] = keep_alive
 
+        logger.info(
+            "_generate_with_image START model=%s images=%d image_bytes=%s prompt_chars=%d context_turns=%d has_system=%s keep_alive=%s",
+            model,
+            len(images),
+            ",".join(str(len(b)) for b in images),
+            len(prompt),
+            len(non_system_turns),
+            bool(system_content),
+            keep_alive,
+        )
+
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
@@ -533,32 +560,37 @@ class OllamaClient:
                 response.raise_for_status()
                 data = response.json()
                 text = str(data.get("response", "")).strip()
+                logger.debug("_generate_with_image raw_response_text=%r", text[:300])
                 if not text:
                     raise OllamaError("Empty image generate response from Ollama")
 
                 elapsed_ms = int((monotonic() - started_at) * 1000)
                 logger.info(
-                    "ollama_generate_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d",
+                    "ollama_generate_image_ok model=%s prompt_chars=%d context_turns=%d elapsed_ms=%d response_chars=%d",
                     model,
                     len(prompt),
                     len(context_turns),
                     elapsed_ms,
+                    len(text),
                 )
                 return OllamaResponse(text=text)
             except httpx.TimeoutException as error:
                 last_error = error
+                logger.warning("_generate_with_image TIMEOUT model=%s attempt=%d/%d", model, attempt + 1, self._retries + 1)
                 if attempt < self._retries:
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 raise OllamaTimeoutError("Ollama image generate request timed out") from error
             except httpx.RequestError as error:
                 last_error = error
+                logger.warning("_generate_with_image CONNECTION_ERROR model=%s attempt=%d/%d error=%s", model, attempt + 1, self._retries + 1, error)
                 if attempt < self._retries:
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 raise OllamaConnectionError("Could not reach Ollama") from error
             except httpx.HTTPStatusError as error:
                 detail = error.response.text[:300]
+                logger.warning("_generate_with_image HTTP_ERROR model=%s status=%d body=%r", model, error.response.status_code, detail)
                 raise OllamaError(
                     f"Ollama returned HTTP {error.response.status_code}: {detail}"
                 ) from error
@@ -576,6 +608,7 @@ class OllamaClient:
         Covers English, Spanish, French, German and Italian.
         """
         normalized = text.strip().lower()
+        logger.debug("_looks_like_missing_image_response checking text=%r", text[:200])
         if not normalized:
             return False
 
@@ -603,7 +636,12 @@ class OllamaClient:
             r"\bnon\s+posso\b.{0,30}\b(vedere|accedere|elaborare)\b.{0,40}\b(immagine|foto)\b",
             r"\bnessuna?\s+(immagine|foto)\b.{0,30}\b(fornita|allegata|trovata)\b",
         )
-        return any(re.search(pattern, normalized) for pattern in patterns)
+        for pattern in patterns:
+            if re.search(pattern, normalized):
+                logger.warning("_looks_like_missing_image_response MATCHED pattern=%r text=%r", pattern, text[:200])
+                return True
+        logger.debug("_looks_like_missing_image_response NO_MATCH text=%r", text[:200])
+        return False
 
     @staticmethod
     def _compose_prompt(prompt: str, context_turns: list[ConversationTurn]) -> str:

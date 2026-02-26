@@ -1524,6 +1524,12 @@ class BotHandlers:
         ]
         image_bytes_size = 0
 
+        logger.info(
+            "on_image user_id=%s model=%s use_chat_api=%s locale=%s caption_len=%d has_photo=%s has_doc=%s",
+            user_id, model, self._use_chat_api, locale, len(caption),
+            bool(message.photo), bool(message.document),
+        )
+
         try:
             photo_bytes: bytes | None = None
             if message.photo:
@@ -1569,6 +1575,10 @@ class BotHandlers:
             image_base64 = base64.b64encode(photo_bytes).decode("utf-8")
             if not image_bytes_size:
                 image_bytes_size = len(photo_bytes)
+            logger.info(
+                "on_image encoded user_id=%s raw_bytes=%d b64_chars=%d",
+                user_id, image_bytes_size, len(image_base64),
+            )
             if image_bytes_size > self._image_max_bytes:
                 await message.reply_text(
                     self._warning(
@@ -1585,12 +1595,20 @@ class BotHandlers:
             started_at = monotonic()
             await update.effective_chat.send_action(action=ChatAction.TYPING)
 
+            logger.info(
+                "on_image calling chat_with_image user_id=%s model=%s prompt_chars=%d context_turns=%d",
+                user_id, model, len(user_prompt_with_assets), len(turns_for_model),
+            )
             ollama_response = await self._ollama_client.chat_with_image(
                 model=model,
                 prompt=user_prompt_with_assets,
                 images=[image_base64],
                 context_turns=turns_for_model,
                 keep_alive=self._keep_alive,
+            )
+            logger.info(
+                "on_image response user_id=%s model=%s response_chars=%d",
+                user_id, model, len(ollama_response.text),
             )
         except OllamaTimeoutError:
             await message.reply_text(
@@ -1847,10 +1865,18 @@ class BotHandlers:
             turns_for_model.extend(extra_turns)
         turns_for_model.extend(turns)
 
+        logger.info(
+            "_generate_response user_id=%s model=%s use_chat_api=%s prompt_images=%s prompt_chars=%d context_turns=%d",
+            user_id, model, self._use_chat_api,
+            len(prompt_images) if prompt_images else 0,
+            len(prompt), len(turns_for_model),
+        )
+
         if self._use_chat_api:
             if prompt_images:
                 # Route through chat_with_image which has _looks_like_missing_image_response
                 # fallback detection — identical path to direct image upload.
+                logger.info("_generate_response -> chat_with_image user_id=%s model=%s images=%d", user_id, model, len(prompt_images))
                 try:
                     return await self._ollama_client.chat_with_image(
                         model=model,
@@ -1867,6 +1893,7 @@ class BotHandlers:
                         error,
                     )
             else:
+                logger.info("_generate_response -> chat (text-only) user_id=%s model=%s", user_id, model)
                 try:
                     return await self._ollama_client.chat(
                         model=model,
@@ -1882,6 +1909,10 @@ class BotHandlers:
                         error,
                     )
 
+        logger.info(
+            "_generate_response -> generate (fallback) user_id=%s model=%s images=%s",
+            user_id, model, len(prompt_images) if prompt_images else 0,
+        )
         return await self._ollama_client.generate(
             model=model,
             prompt=prompt,
