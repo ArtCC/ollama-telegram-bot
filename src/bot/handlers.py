@@ -1440,11 +1440,7 @@ class BotHandlers:
                 asset_name=(message.document.file_name if message.document else "telegram-photo"),
                 mime_type=(message.document.mime_type if message.document else "image/jpeg") or "image/jpeg",
                 size_bytes=image_bytes_size,
-                content_text=(
-                    f"Image prompt: {user_prompt}\n\n"
-                    "Image analysis result (generated from the uploaded image):\n"
-                    f"{ollama_response.text}"
-                ),
+                content_text=ollama_response.text,
                 is_selected=True,
             )
         except Exception as error:
@@ -2058,27 +2054,35 @@ class BotHandlers:
         has_image_assets = any(asset.asset_kind == "image" for asset in assets)
 
         lines = [
-            "Important context instructions:",
-            "- The following blocks are stored knowledge extracted from user files.",
-            "- You MUST answer using this stored context when relevant.",
-            "- Do NOT ask the user to resend the same file if context is already provided below.",
+            "=== STORED FILE CONTEXT ===",
         ]
-        if force_single:
-            lines.append("- You MUST prioritize only the single file provided below for this answer.")
         if has_image_assets:
             lines.append(
-                "- For image-related questions, use the stored image analysis below as your visual source of truth."
+                "The following entries include visual analyses of images previously uploaded by the user. "
+                "Treat this analysis data as your direct knowledge of the image content."
             )
-            lines.append(
-                "- The original image bytes are not available at this step; answer from stored image analysis content and do not ask for re-upload."
-            )
-
+        if force_single:
+            lines.append("Answer exclusively based on the single file provided below.")
         lines.append("")
-        lines.append("Selected user files context:")
+
         for asset in assets:
-            lines.append(f"[File #{asset.id} - {asset.asset_name} | type={asset.asset_kind}]")
-            lines.append(asset.content_text)
+            if asset.asset_kind == "image":
+                # Strip legacy labels from old-format content_text
+                clean_text = re.sub(
+                    r"^(?:image prompt:[^\n]*\n+)?(?:image analysis result[^:\n]*:\n+)?",
+                    "",
+                    asset.content_text.strip(),
+                    flags=re.IGNORECASE,
+                ).strip() or asset.content_text.strip()
+                lines.append(f"[Image #{asset.id}: {asset.asset_name} — visual analysis]")
+                lines.append(clean_text)
+            else:
+                lines.append(f"[Document #{asset.id}: {asset.asset_name}]")
+                lines.append(asset.content_text.strip())
             lines.append("")
+
+        lines.append("=== END CONTEXT ===")
+        lines.append("")
         lines.append(f"User request: {prompt}")
         return "\n".join(lines)
 
