@@ -53,8 +53,9 @@ def main() -> None:
     )
 
     logger.info(
-        "startup_ollama base_url=%s default_model=%s use_chat_api=%s keep_alive=%s timeout_s=%d cloud_auth=%s",
+        "startup_ollama base_url=%s cloud_base_url=%s default_model=%s use_chat_api=%s keep_alive=%s timeout_s=%d cloud_auth=%s",
         settings.ollama_base_url,
+        settings.ollama_cloud_base_url,
         settings.ollama_default_model,
         settings.ollama_use_chat_api,
         settings.ollama_keep_alive,
@@ -78,6 +79,7 @@ def main() -> None:
     model_preferences_store = ModelPreferencesStore(settings.model_prefs_db_path)
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,
+        cloud_base_url=settings.ollama_cloud_base_url,
         timeout_seconds=settings.request_timeout_seconds,
         api_key=settings.ollama_api_key,
         auth_scheme=settings.ollama_auth_scheme,

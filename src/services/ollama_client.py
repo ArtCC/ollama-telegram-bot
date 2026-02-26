@@ -34,22 +34,39 @@ class OllamaClient:
     def __init__(
         self,
         base_url: str,
+        cloud_base_url: str,
         timeout_seconds: int,
         api_key: str | None = None,
         auth_scheme: str = "Bearer",
         retries: int = 2,
     ) -> None:
         self._base_url = base_url
+        self._cloud_base_url = cloud_base_url
         self._timeout = timeout_seconds
         self._retries = retries
         self._api_key = api_key
         self._auth_scheme = auth_scheme
         self._vision_capability_cache: dict[str, bool] = {}
 
-    def _request_headers(self) -> dict[str, str] | None:
+    def _is_cloud_model(self, model: str) -> bool:
+        return model.strip().lower().endswith("-cloud")
+
+    def can_use_cloud_model(self, model: str) -> bool:
+        return self._is_cloud_model(model) and bool(self._api_key)
+
+    def _target_base_url(self, model: str | None = None) -> str:
+        if model and self.can_use_cloud_model(model):
+            return self._cloud_base_url
+        return self._base_url
+
+    def _request_headers(self, model: str | None = None) -> dict[str, str] | None:
+        if model and self.can_use_cloud_model(model):
+            return {"Authorization": f"{self._auth_scheme} {self._api_key}"}
+        if model is None and self._api_key and self._base_url == self._cloud_base_url:
+            return {"Authorization": f"{self._auth_scheme} {self._api_key}"}
         if not self._api_key:
             return None
-        return {"Authorization": f"{self._auth_scheme} {self._api_key}"}
+        return None
 
     async def generate(
         self,
@@ -70,7 +87,10 @@ class OllamaClient:
         for attempt in range(self._retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
-                    response = await client.post(f"{self._base_url}/api/generate", json=payload)
+                    response = await client.post(
+                        f"{self._target_base_url(model)}/api/generate",
+                        json=payload,
+                    )
                 response.raise_for_status()
                 data = response.json()
                 text = str(data.get("response", "")).strip()
@@ -150,8 +170,14 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
-                    response = await client.post(f"{self._base_url}/api/chat", json=payload)
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    headers=self._request_headers(model),
+                ) as client:
+                    response = await client.post(
+                        f"{self._target_base_url(model)}/api/chat",
+                        json=payload,
+                    )
                 response.raise_for_status()
                 data = response.json()
                 message = data.get("message") or {}
@@ -262,9 +288,12 @@ class OllamaClient:
             return self._vision_capability_cache[model]
 
         try:
-            async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
+            async with httpx.AsyncClient(
+                timeout=self._timeout,
+                headers=self._request_headers(model),
+            ) as client:
                 response = await client.post(
-                    f"{self._base_url}/api/show",
+                    f"{self._target_base_url(model)}/api/show",
                     json={"model": model},
                 )
             response.raise_for_status()
@@ -322,8 +351,14 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
-                    response = await client.post(f"{self._base_url}/api/chat", json=payload)
+                async with httpx.AsyncClient(
+                    timeout=self._timeout,
+                    headers=self._request_headers(model),
+                ) as client:
+                    response = await client.post(
+                        f"{self._target_base_url(model)}/api/chat",
+                        json=payload,
+                    )
                 response.raise_for_status()
                 data = response.json()
                 message = data.get("message") or {}

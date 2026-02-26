@@ -14,6 +14,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Added document ingestion and review support using the selected model (TXT/MD/CSV/JSON and PDF).
 - Added document limits configuration with `DOCUMENT_MAX_BYTES` and `DOCUMENT_MAX_CHARS`.
 - Added optional Ollama cloud/auth configuration using `OLLAMA_API_KEY` and `OLLAMA_AUTH_SCHEME`.
+- Added direct cloud routing for `*-cloud` models via `OLLAMA_CLOUD_BASE_URL` + API key, allowing cloud usage without daemon-level `ollama signin`.
 
 ### Fixed
 - Included the `locales/` directory in Docker image build to prevent startup failures in containers.

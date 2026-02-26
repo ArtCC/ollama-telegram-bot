@@ -116,6 +116,7 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL}
       OLLAMA_API_KEY: ${OLLAMA_API_KEY:-}
       OLLAMA_AUTH_SCHEME: ${OLLAMA_AUTH_SCHEME:-Bearer}
+      OLLAMA_CLOUD_BASE_URL: ${OLLAMA_CLOUD_BASE_URL:-https://ollama.com}
       OLLAMA_DEFAULT_MODEL: ${OLLAMA_DEFAULT_MODEL}
       OLLAMA_USE_CHAT_API: ${OLLAMA_USE_CHAT_API:-true}
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
@@ -141,6 +142,7 @@ See `.env.example` for the complete list and example values.
 - `OLLAMA_BASE_URL`: Base URL of Ollama (for example `http://ollama:11434`, no `/v1`).
 - `OLLAMA_API_KEY`: Optional API key for cloud/API-gateway Ollama endpoints.
 - `OLLAMA_AUTH_SCHEME`: Authorization scheme for `OLLAMA_API_KEY` (default `Bearer`).
+- `OLLAMA_CLOUD_BASE_URL`: Cloud API base URL for `*-cloud` models when API key is set (default `https://ollama.com`).
 - `OLLAMA_DEFAULT_MODEL`: Model used by default when user has no custom selection.
 - `OLLAMA_USE_CHAT_API`: Enables `/api/chat` as primary path with automatic generate fallback.
 - `OLLAMA_KEEP_ALIVE`: Chat keep-alive hint sent to Ollama (for example `5m`).
@@ -162,6 +164,8 @@ See `.env.example` for the complete list and example values.
 Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English (`en`).
 Current locale files: `locales/en.json`, `locales/es.json`, `locales/de.json`, `locales/fr.json`, and `locales/it.json`.
 When uploading a document, you can add a caption instruction to review it immediately, or upload it without caption to keep it in context for later questions.
+
+For Ollama Cloud without daemon `ollama signin`, set `OLLAMA_API_KEY` and keep `OLLAMA_CLOUD_BASE_URL=https://ollama.com`; `*-cloud` model requests are routed directly to cloud API.
 
 ## Docker Compose (Fully Variable-Driven)
 

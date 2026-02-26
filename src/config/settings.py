@@ -8,6 +8,7 @@ from dataclasses import dataclass
 class Settings:
     telegram_bot_token: str
     ollama_base_url: str
+    ollama_cloud_base_url: str
     ollama_api_key: str | None
     ollama_auth_scheme: str
     ollama_default_model: str
@@ -76,6 +77,7 @@ def load_settings() -> Settings:
     bot_default_locale = os.getenv("BOT_DEFAULT_LOCALE", "en").strip().lower()
     ollama_api_key = os.getenv("OLLAMA_API_KEY", "").strip() or None
     ollama_auth_scheme = os.getenv("OLLAMA_AUTH_SCHEME", "Bearer").strip()
+    ollama_cloud_base_url = os.getenv("OLLAMA_CLOUD_BASE_URL", "https://ollama.com").strip()
 
     try:
         request_timeout_seconds = int(timeout_raw)
@@ -109,6 +111,8 @@ def load_settings() -> Settings:
         raise ValueError("OLLAMA_KEEP_ALIVE cannot be empty")
     if not ollama_auth_scheme:
         raise ValueError("OLLAMA_AUTH_SCHEME cannot be empty")
+    if not ollama_cloud_base_url:
+        raise ValueError("OLLAMA_CLOUD_BASE_URL cannot be empty")
     if not bot_default_locale:
         raise ValueError("BOT_DEFAULT_LOCALE cannot be empty")
 
@@ -117,6 +121,7 @@ def load_settings() -> Settings:
     return Settings(
         telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
         ollama_base_url=_require_env("OLLAMA_BASE_URL").rstrip("/"),
+        ollama_cloud_base_url=ollama_cloud_base_url.rstrip("/"),
         ollama_api_key=ollama_api_key,
         ollama_auth_scheme=ollama_auth_scheme,
         ollama_default_model=_require_env("OLLAMA_DEFAULT_MODEL"),

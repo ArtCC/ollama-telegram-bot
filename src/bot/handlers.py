@@ -317,6 +317,23 @@ class BotHandlers:
 
         if requested_model:
             if requested_model not in models:
+                if self._ollama_client.can_use_cloud_model(requested_model):
+                    try:
+                        self._model_preferences_store.set_user_model(user_id, requested_model)
+                    except Exception as error:
+                        logger.exception("Failed to save cloud user model preference: %s", error)
+                        await update.effective_message.reply_text(
+                            self._error(self._i18n.t("errors.save_model_preference", locale=locale)),
+                            reply_markup=self._main_keyboard(locale),
+                        )
+                        return
+                    await update.effective_message.reply_text(
+                        self._success(
+                            self._i18n.t("models.updated", locale=locale, model=requested_model)
+                        ),
+                        reply_markup=self._main_keyboard(locale),
+                    )
+                    return
                 await update.effective_message.reply_text(
                     self._warning(self._i18n.t("models.not_found", locale=locale)),
                     reply_markup=self._main_keyboard(locale),
@@ -617,16 +634,6 @@ class BotHandlers:
         image_bytes_size = 0
 
         try:
-            vision_support = await self._ollama_client.supports_vision(model)
-            if vision_support is False:
-                await message.reply_text(
-                    self._warning(
-                        self._i18n.t("image.model_without_vision", locale=locale, model=model)
-                    ),
-                    reply_markup=self._main_keyboard(locale),
-                )
-                return
-
             photo_bytes: bytes | None = None
             if message.photo:
                 image_bytes_size = int(message.photo[-1].file_size or 0)

@@ -117,6 +117,7 @@ def test_load_settings_cloud_auth_defaults() -> None:
 
     assert settings.ollama_api_key is None
     assert settings.ollama_auth_scheme == "Bearer"
+    assert settings.ollama_cloud_base_url == "https://ollama.com"
 
 
 def test_load_settings_cloud_auth_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,6 +134,13 @@ def test_load_settings_rejects_invalid_document_limits(monkeypatch: pytest.Monke
     monkeypatch.setenv("DOCUMENT_MAX_BYTES", "100")
 
     with pytest.raises(ValueError, match="DOCUMENT_MAX_BYTES"):
+        load_settings()
+
+
+def test_load_settings_rejects_empty_cloud_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OLLAMA_CLOUD_BASE_URL", "   ")
+
+    with pytest.raises(ValueError, match="OLLAMA_CLOUD_BASE_URL"):
         load_settings()
 
 
