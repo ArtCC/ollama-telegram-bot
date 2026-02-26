@@ -1367,6 +1367,14 @@ class BotHandlers:
         stored_images = [a.image_base64 for a in image_assets if a.image_base64]
         prompt_images: list[str] | None = stored_images or None
 
+        # If images are selected, verify the model supports vision before sending
+        if prompt_images:
+            vision_supported = await self._ollama_client.supports_vision(model)
+            logger.info("ask_files vision_supported=%s model=%s images=%d", vision_supported, model, len(prompt_images))
+            if vision_supported is False:
+                prompt_images = None  # fall back to text-only (descriptions still in extra_turns)
+                logger.warning("ask_files model=%s has no vision — dropping raw images, using text descriptions only", model)
+
         # Doc assets augment the prompt text
         if doc_assets:
             prompt_to_send = self._augment_prompt_with_assets(
@@ -1529,6 +1537,16 @@ class BotHandlers:
             user_id, model, self._use_chat_api, locale, len(caption),
             bool(message.photo), bool(message.document),
         )
+
+        # Check vision capability before downloading or processing
+        vision_supported = await self._ollama_client.supports_vision(model)
+        logger.info("on_image vision_supported=%s model=%s", vision_supported, model)
+        if vision_supported is False:
+            await message.reply_text(
+                self._warning(self._i18n.t("image.model_without_vision", locale=locale, model=model)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
 
         try:
             photo_bytes: bytes | None = None
