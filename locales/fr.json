@@ -28,6 +28,8 @@
       "confirm": "✅ Confirmer",
       "cancel": "❌ Annuler",
       "ask_file": "💬 Demander",
+      "add_file": "📤 Ajouter fichier",
+      "preview": "🖼️ Aperçu",
       "close": "✖️ Fermer"
     },
     "input_placeholder": "Écrivez un message ou utilisez les boutons…"
@@ -79,7 +81,9 @@
     "page_status": "Page {page}/{pages}",
     "instructions": "Utilisez ✅/☑️ pour sélectionner ou désélectionner les fichiers pour le contexte, 🗑 pour supprimer.",
     "deleted": "Fichier supprimé.",
-    "not_found": "Fichier introuvable ou déjà supprimé."
+    "not_found": "Fichier introuvable ou déjà supprimé.",
+    "upload_prompt": "Mode envoi actif. Envoie une image pour la sauvegarder sans analyse.",
+    "upload_done": "✅ Fichier #{id} enregistré : {name}. Utilisez /askfile {id} pour l'analyser."
   },
   "web_models": {
     "available_title": "Modèles web disponibles à l’installation :",

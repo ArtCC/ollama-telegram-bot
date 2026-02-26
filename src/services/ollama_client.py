@@ -393,14 +393,14 @@ class OllamaClient:
         *,
         model: str,
         prompt: str,
-        image_base64: str,
+        images: list[str],
         context_turns: list[ConversationTurn],
         keep_alive: str,
     ) -> OllamaResponse:
         started_at = monotonic()
         messages = self._compose_messages_with_image(
             prompt=prompt,
-            image_base64=image_base64,
+            images=images,
             context_turns=context_turns,
         )
         payload = {
@@ -444,7 +444,7 @@ class OllamaClient:
                     return await self._generate_with_image(
                         model=model,
                         prompt=prompt,
-                        image_base64=image_base64,
+                        images=images,
                         context_turns=context_turns,
                     )
                 return OllamaResponse(text=text)
@@ -471,7 +471,7 @@ class OllamaClient:
                     return await self._generate_with_image(
                         model=model,
                         prompt=prompt,
-                        image_base64=image_base64,
+                        images=images,
                         context_turns=context_turns,
                     )
                 raise OllamaError(
@@ -487,7 +487,7 @@ class OllamaClient:
         *,
         model: str,
         prompt: str,
-        image_base64: str,
+        images: list[str],
         context_turns: list[ConversationTurn],
     ) -> OllamaResponse:
         started_at = monotonic()
@@ -495,7 +495,7 @@ class OllamaClient:
         payload = {
             "model": model,
             "prompt": composed_prompt,
-            "images": [image_base64],
+            "images": images,
             "stream": False,
         }
 
@@ -609,7 +609,7 @@ class OllamaClient:
     @staticmethod
     def _compose_messages_with_image(
         prompt: str,
-        image_base64: str,
+        images: list[str],
         context_turns: list[ConversationTurn],
     ) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
@@ -622,7 +622,7 @@ class OllamaClient:
             {
                 "role": "user",
                 "content": prompt,
-                "images": [image_base64],
+                "images": images,
             }
         )
         return messages

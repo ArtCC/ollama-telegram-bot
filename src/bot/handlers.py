@@ -55,6 +55,8 @@ FILE_TOGGLE_ACTION = "toggle"
 FILE_DELETE_ACTION = "delete"
 FILE_ASK_ACTION = "ask"
 FILE_CLOSE_ACTION = "close"
+FILE_UPLOAD_ACTION = "upload"
+FILE_PREVIEW_ACTION = "preview"
 ICON_INFO = "ℹ️"
 ICON_SUCCESS = "✅"
 ICON_WARNING = "⚠️"
@@ -104,6 +106,7 @@ class BotHandlers:
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
         self._askfile_target_by_user: dict[int, int] = {}
+        self._upload_mode_users: set[int] = set()
 
     @staticmethod
     def required_i18n_keys() -> tuple[str, ...]:
@@ -205,6 +208,10 @@ class BotHandlers:
             "agent.planner_instruction",
             "agent.analyst_instruction",
             "agent.chat_instruction",
+            "ui.buttons.add_file",
+            "ui.buttons.preview",
+            "files.upload_prompt",
+            "files.upload_done",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -432,7 +439,16 @@ class BotHandlers:
         if not assets:
             await update.effective_message.reply_text(
                 self._info(self._i18n.t("files.empty", locale=locale)),
-                reply_markup=self._main_keyboard(locale),
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.add_file", locale=locale),
+                                callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_UPLOAD_ACTION}",
+                            )
+                        ]
+                    ]
+                ),
             )
             return
 
@@ -587,8 +603,10 @@ class BotHandlers:
             return
         locale = self._locale(update)
         user_id = update.effective_user.id
+        was_upload = user_id in self._upload_mode_users
+        self._upload_mode_users.discard(user_id)
         pending = self._askfile_target_by_user.pop(user_id, None)
-        if pending is not None:
+        if pending is not None or was_upload:
             await update.effective_message.reply_text(
                 self._i18n.t("messages.cancel_ask_done", locale=locale),
                 reply_markup=self._main_keyboard(locale),
@@ -975,6 +993,48 @@ class BotHandlers:
                 ),
                 reply_markup=self._main_keyboard(locale),
             )
+            return
+
+        if action == FILE_UPLOAD_ACTION:
+            self._upload_mode_users.add(user_id)
+            await query.message.reply_text(
+                self._info(self._i18n.t("files.upload_prompt", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if action == FILE_PREVIEW_ACTION and len(parts) >= 2:
+            asset_id_raw = parts[1]
+            if not asset_id_raw.isdigit():
+                return
+            asset_id = int(asset_id_raw)
+            try:
+                asset = self._user_assets_store.get_asset(user_id, asset_id)
+            except Exception as error:
+                logger.exception("Failed to fetch file for preview: %s", error)
+                await query.message.reply_text(
+                    self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+            if not asset or not asset.image_base64:
+                await query.message.reply_text(
+                    self._warning(self._i18n.t("files.not_found", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+            try:
+                img_bytes = base64.b64decode(asset.image_base64)
+                await query.message.reply_photo(photo=img_bytes)
+            except Exception as error:
+                logger.warning(
+                    "image_preview_failed user_id=%s asset_id=%s error=%s", user_id, asset_id, error
+                )
+                await query.message.reply_text(
+                    self._error(self._i18n.t("errors.ollama_generic", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+            return
 
     async def _show_files_page(self, update: Update, page: int) -> None:
         query = update.callback_query
@@ -998,7 +1058,20 @@ class BotHandlers:
                 query=query,
                 text=self._info(self._i18n.t("files.empty", locale=locale)),
                 reply_markup=InlineKeyboardMarkup(
-                    [[InlineKeyboardButton(text=self._i18n.t("ui.buttons.close", locale=locale), callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CLOSE_ACTION}")]]
+                    [
+                        [
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.add_file", locale=locale),
+                                callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_UPLOAD_ACTION}",
+                            )
+                        ],
+                        [
+                            InlineKeyboardButton(
+                                text=self._i18n.t("ui.buttons.close", locale=locale),
+                                callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CLOSE_ACTION}",
+                            )
+                        ],
+                    ]
                 ),
             )
             return
@@ -1360,6 +1433,80 @@ class BotHandlers:
         locale = self._locale(update)
         message = update.effective_message
         user_id = update.effective_user.id
+
+        # --- UPLOAD MODE: save image to /files without model analysis ---
+        if user_id in self._upload_mode_users:
+            self._upload_mode_users.discard(user_id)
+            try:
+                upload_bytes: bytes | None = None
+                upload_name = "telegram-photo"
+                upload_mime = "image/jpeg"
+                if message.photo:
+                    sz = int(message.photo[-1].file_size or 0)
+                    if sz > self._image_max_bytes:
+                        await message.reply_text(
+                            self._warning(
+                                self._i18n.t(
+                                    "image.too_large",
+                                    locale=locale,
+                                    max_size=self._format_size(self._image_max_bytes),
+                                )
+                            ),
+                            reply_markup=self._main_keyboard(locale),
+                        )
+                        return
+                    f = await message.photo[-1].get_file()
+                    upload_bytes = bytes(await f.download_as_bytearray())
+                elif message.document and (message.document.mime_type or "").startswith("image/"):
+                    sz = int(message.document.file_size or 0)
+                    if sz > self._image_max_bytes:
+                        await message.reply_text(
+                            self._warning(
+                                self._i18n.t(
+                                    "image.too_large",
+                                    locale=locale,
+                                    max_size=self._format_size(self._image_max_bytes),
+                                )
+                            ),
+                            reply_markup=self._main_keyboard(locale),
+                        )
+                        return
+                    f = await message.document.get_file()
+                    upload_bytes = bytes(await f.download_as_bytearray())
+                    upload_name = message.document.file_name or upload_name
+                    upload_mime = message.document.mime_type or upload_mime
+                if not upload_bytes:
+                    await message.reply_text(
+                        self._warning(self._i18n.t("image.invalid_file", locale=locale)),
+                        reply_markup=self._main_keyboard(locale),
+                    )
+                    return
+                image_b64_upload = base64.b64encode(upload_bytes).decode("utf-8")
+                asset_id = self._user_assets_store.add_asset(
+                    user_id=user_id,
+                    asset_kind="image",
+                    asset_name=upload_name,
+                    mime_type=upload_mime,
+                    size_bytes=len(upload_bytes),
+                    content_text="",
+                    is_selected=True,
+                    image_base64=image_b64_upload,
+                )
+                await message.reply_text(
+                    self._success(
+                        self._i18n.t("files.upload_done", locale=locale, name=upload_name, id=asset_id)
+                    ),
+                    reply_markup=self._main_keyboard(locale),
+                )
+            except Exception as err:
+                logger.warning("image_upload_save_failed user_id=%s error=%s", user_id, err)
+                await message.reply_text(
+                    self._error(self._i18n.t("errors.ollama_generic", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+            return
+        # --- END UPLOAD MODE ---
+
         caption = (message.caption or "").strip()
         user_prompt = caption or self._i18n.t("image.default_prompt", locale=locale)
         user_prompt_with_assets = self._augment_prompt_with_selected_assets(
@@ -1441,7 +1588,7 @@ class BotHandlers:
             ollama_response = await self._ollama_client.chat_with_image(
                 model=model,
                 prompt=user_prompt_with_assets,
-                image_base64=image_base64,
+                images=[image_base64],
                 context_turns=turns_for_model,
                 keep_alive=self._keep_alive,
             )
@@ -1561,7 +1708,13 @@ class BotHandlers:
                 return
 
             trimmed_text = self._trim_document_text(extracted_text)
-            caption = (message.caption or "").strip()
+
+            # In upload mode, ignore the caption and save without model analysis
+            if user_id in self._upload_mode_users:
+                self._upload_mode_users.discard(user_id)
+                caption = ""
+            else:
+                caption = (message.caption or "").strip()
 
             asset_id: int | None = None
             try:
@@ -1695,13 +1848,22 @@ class BotHandlers:
         turns_for_model.extend(turns)
 
         if self._use_chat_api:
+            if prompt_images:
+                # Route through chat_with_image which has _looks_like_missing_image_response
+                # fallback detection — identical path to direct image upload.
+                return await self._ollama_client.chat_with_image(
+                    model=model,
+                    prompt=prompt,
+                    images=prompt_images,
+                    context_turns=turns_for_model,
+                    keep_alive=self._keep_alive,
+                )
             try:
                 return await self._ollama_client.chat(
                     model=model,
                     prompt=prompt,
                     context_turns=turns_for_model,
                     keep_alive=self._keep_alive,
-                    prompt_images=prompt_images or None,
                 )
             except OllamaError as error:
                 logger.warning(
@@ -2080,6 +2242,15 @@ class BotHandlers:
                     ),
                 ]
             )
+            if asset.asset_kind == "image" and asset.image_base64:
+                rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=f"{self._i18n.t('ui.buttons.preview', locale=locale)} #{asset.id}",
+                            callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_PREVIEW_ACTION}:{asset.id}",
+                        )
+                    ]
+                )
 
         if total_pages > 1:
             nav_row: list[InlineKeyboardButton] = []
@@ -2100,6 +2271,14 @@ class BotHandlers:
             if nav_row:
                 rows.append(nav_row)
 
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.add_file", locale=locale),
+                    callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_UPLOAD_ACTION}",
+                )
+            ]
+        )
         rows.append(
             [
                 InlineKeyboardButton(

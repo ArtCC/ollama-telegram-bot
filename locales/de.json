@@ -28,6 +28,8 @@
       "confirm": "✅ Bestätigen",
       "cancel": "❌ Abbrechen",
       "ask_file": "💬 Fragen",
+      "add_file": "📤 Datei hinzufügen",
+      "preview": "🖼️ Vorschau",
       "close": "✖️ Schließen"
     },
     "input_placeholder": "Nachricht schreiben oder Schaltflächen verwenden…"
@@ -79,7 +81,9 @@
     "page_status": "Seite {page}/{pages}",
     "instructions": "Nutze ✅/☑️ zum Auswählen oder Abwählen für Kontext, 🗑 zum Löschen.",
     "deleted": "Datei gelöscht.",
-    "not_found": "Datei nicht gefunden oder bereits gelöscht."
+    "not_found": "Datei nicht gefunden oder bereits gelöscht.",
+    "upload_prompt": "Upload-Modus aktiv. Sende ein Bild, um es ohne Modellanalyse zu speichern.",
+    "upload_done": "✅ Datei #{id} gespeichert: {name}. Verwende /askfile {id} zum Analysieren."
   },
   "web_models": {
     "available_title": "Web-Modelle zum Installieren:",
