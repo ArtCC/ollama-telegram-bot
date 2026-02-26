@@ -6,12 +6,14 @@
     "clear": "Clear conversation context",
     "models": "List or select model",
     "webmodels": "Browse installable web models",
+    "files": "List your saved files",
     "currentmodel": "Show your current model"
   },
   "ui": {
     "buttons": {
       "models": "🧠 Models",
       "web_models": "🌐 Web Models",
+      "files": "📁 Files",
       "current_model": "📌 Current Model",
       "clear": "🧹 Clear Context",
       "help": "❓ Help",
@@ -22,13 +24,14 @@
       "next_page": "Next ➡️",
       "refresh_models": "Refresh models",
       "confirm": "✅ Confirm",
-      "cancel": "❌ Cancel"
+      "cancel": "❌ Cancel",
+      "close": "✖️ Close"
     },
     "input_placeholder": "Write a message or use buttons…"
   },
   "messages": {
     "start_welcome": "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\nUse the buttons below or slash commands.",
-    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
     "please_send_non_empty": "Please send a non-empty message.",
     "voice_disabled": "Voice and audio messages are disabled. Please send text or image messages.",
     "clear_confirm": "<b>Clear context?</b>\nThis will remove your current chat memory.",
@@ -63,6 +66,14 @@
     "page_status": "Page {page}/{pages}",
     "no_models_available": "No models are currently available in Ollama."
   },
+  "files": {
+    "available_title": "Saved files:",
+    "empty": "You don't have saved files yet. Send a document or image first.",
+    "page_status": "Page {page}/{pages}",
+    "instructions": "Use ✅/☑️ to select or deselect files for context, 🗑 to delete.",
+    "deleted": "File deleted.",
+    "not_found": "File not found or already removed."
+  },
   "web_models": {
     "available_title": "Web models available to install:",
     "select_with": "Filter with: /webmodels <query>",
@@ -94,6 +105,7 @@
     "ollama_validate_model": "I could not validate the selected model right now. Please try again later.",
     "save_model_preference": "I could not save your model preference. Please try again later.",
     "save_default_model_preference": "I could not save your default model preference. Please try again later.",
+    "files_storage": "I could not update your saved files right now. Please try again later.",
     "ollama_generic": "Ollama returned an error. Please try again in a few moments."
   },
   "agent": {

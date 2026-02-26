@@ -4,21 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
-## [0.0.7] - 2026-02-26
-
-### Added
-- Added dedicated `/webmodels` command to browse Ollama web catalog models available to install (separate from local `/models`).
-- Added independent web-model pagination and search flow (`/webmodels <query>`) with inline previous/next navigation.
-- Added direct web catalog links per model and install guidance (`ollama pull <model>`) in bot responses.
-
-### Changed
-- Updated command registry, quick actions keyboard, and localized help text to clearly separate local models and web catalog models.
-
 ## [0.0.6] - 2026-02-26
 
 ### Added
 - Added paginated `/models` browsing with inline previous/next navigation buttons.
 - Added `/models <query>` filtering support to search available models by name.
+- Added dedicated `/webmodels` command to browse Ollama web catalog models available to install (separate from local `/models`).
+- Added independent web-model pagination and search flow (`/webmodels <query>`) with inline previous/next navigation.
+- Added direct web catalog links per model and install guidance (`ollama pull <model>`) in bot responses.
+- Added inline close action for both `/models` and `/webmodels` lists, removing the list message from chat.
+- Added persistent user file storage (documents and analyzed images) in SQLite for reusable context.
+- Added `/files` command with inline pagination, select/deselect actions, and delete action per file.
+- Added selected-files context injection in chat/image prompts (RAG-lite retrieval over selected user files).
+
+### Changed
+- Updated local and web model pagination to render over the same message (no new message per page when edit is possible).
+- Updated command registry, quick actions keyboard, and localized help text to clearly separate local models and web catalog models.
+- Updated localized command/button/error catalog to support file-management workflow.
 
 ## [0.0.5] - 2026-02-26
 

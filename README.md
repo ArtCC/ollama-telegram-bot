@@ -43,7 +43,8 @@ ollama-telegram-bot/
 │   ├── core/
 │   │   ├── context_store.py
 │   │   ├── model_preferences_store.py
-│   │   └── rate_limiter.py
+│   │   ├── rate_limiter.py
+│   │   └── user_assets_store.py
 │   ├── i18n/
 │   │   ├── __init__.py
 │   │   └── service.py
@@ -73,7 +74,7 @@ ollama-telegram-bot/
 - [x] Core bot architecture and environment-based configuration.
 - [x] Docker-first deployment with Compose and GHCR publish workflow.
 - [x] Core conversation flow with contextual chat and error-safe Ollama calls.
-- [x] Base command set and UX (`/start`, `/help`, `/health`, `/clear`, `/models`, `/currentmodel`).
+- [x] Base command set and UX (`/start`, `/help`, `/health`, `/clear`, `/models`, `/webmodels`, `/files`, `/currentmodel`).
 - [x] Unified bot UI (slash commands + persistent quick buttons + inline actions).
 - [x] Unified status messaging (`ℹ️ info`, `✅ success`, `⚠️ warning`, `❌ error`).
 - [x] Per-user model management with SQLite persistence.
@@ -102,7 +103,22 @@ ollama-telegram-bot/
 ## Phase 3
 
 - [x] `/models` model browser with inline pagination (previous/next) and name filtering via `/models <query>`.
-- [x] `/webmodels` independent browser for Ollama web catalog models available to install, with its own search and pagination.
+- [x] `/models` pagination updates in-place on the same message, including inline close action to remove the list message.
+- [x] `/webmodels` independent browser for Ollama web catalog models available to install, with its own search, pagination, and inline close action.
+- [x] MVP file memory workflow: uploaded documents/images are persisted per user and can be listed from `/files`.
+- [x] `/files` inline management: select/deselect files for context and delete files.
+- [x] Selected files are injected as context for model responses (RAG-lite retrieval over selected user files).
+
+## Files Context (MVP)
+
+- Upload a **document** (TXT/MD/CSV/JSON/PDF) or an **image** as usual.
+- Uploaded files are stored per user and are selected by default for contextual use.
+- Open `/files` to:
+  - list saved files,
+  - select/deselect files to include in context,
+  - delete files you no longer want to keep.
+- The model uses selected files as additional context when answering new requests.
+- For documents with caption, the bot also performs immediate review while keeping the file saved.
 
 ## Configuration
 
@@ -168,7 +184,9 @@ See `.env.example` for the complete list and example values.
 `ALLOWED_USER_IDS` is required and must contain at least one numeric Telegram user ID.
 Bot replies are localized using each user's Telegram language when available; unsupported locales automatically fallback to English (`en`).
 Current locale files: `locales/en.json`, `locales/es.json`, `locales/de.json`, `locales/fr.json`, and `locales/it.json`.
-When uploading a document, you can add a caption instruction to review it immediately, or upload it without caption to keep it in context for later questions.
+When uploading a document, you can add a caption instruction to review it immediately.
+Regardless of caption, uploaded documents/images are saved and managed later with `/files`.
+Use `/files` to control exactly which saved files are active as context for the next model responses.
 
 For Ollama Cloud without daemon `ollama signin`, set `OLLAMA_API_KEY` and keep `OLLAMA_CLOUD_BASE_URL=https://ollama.com`; `*-cloud` model requests are routed directly to cloud API.
 

@@ -6,12 +6,14 @@
     "clear": "Effacer le contexte de conversation",
     "models": "Lister ou sélectionner un modèle",
     "webmodels": "Parcourir les modèles web installables",
+    "files": "Lister vos fichiers enregistrés",
     "currentmodel": "Afficher votre modèle actuel"
   },
   "ui": {
     "buttons": {
       "models": "🧠 Modèles",
       "web_models": "🌐 Modèles web",
+      "files": "📁 Fichiers",
       "current_model": "📌 Modèle actuel",
       "clear": "🧹 Effacer le contexte",
       "help": "❓ Aide",
@@ -22,13 +24,14 @@
       "next_page": "Suivant ➡️",
       "refresh_models": "Actualiser les modèles",
       "confirm": "✅ Confirmer",
-      "cancel": "❌ Annuler"
+      "cancel": "❌ Annuler",
+      "close": "✖️ Fermer"
     },
     "input_placeholder": "Écrivez un message ou utilisez les boutons…"
   },
   "messages": {
     "start_welcome": "✨ <b>Bienvenue !</b> Envoyez un message et je demanderai une réponse à Ollama.\nUtilisez les boutons ci-dessous ou les commandes slash.",
-    "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
+    "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/files - Gérer vos documents et images enregistrés\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
     "please_send_non_empty": "Veuillez envoyer un message non vide.",
     "voice_disabled": "Les messages vocaux et audio sont désactivés. Veuillez envoyer des messages texte ou des images.",
     "clear_confirm": "<b>Effacer le contexte ?</b>\nCela supprimera votre mémoire de chat actuelle.",
@@ -63,6 +66,14 @@
     "page_status": "Page {page}/{pages}",
     "no_models_available": "Aucun modèle n’est actuellement disponible dans Ollama."
   },
+  "files": {
+    "available_title": "Fichiers enregistrés :",
+    "empty": "Vous n'avez pas encore de fichiers enregistrés. Envoyez d'abord un document ou une image.",
+    "page_status": "Page {page}/{pages}",
+    "instructions": "Utilisez ✅/☑️ pour sélectionner ou désélectionner les fichiers pour le contexte, 🗑 pour supprimer.",
+    "deleted": "Fichier supprimé.",
+    "not_found": "Fichier introuvable ou déjà supprimé."
+  },
   "web_models": {
     "available_title": "Modèles web disponibles à l’installation :",
     "select_with": "Filtrer avec : /webmodels <query>",
@@ -94,6 +105,7 @@
     "ollama_validate_model": "Je n’ai pas pu valider le modèle sélectionné pour le moment. Veuillez réessayer plus tard.",
     "save_model_preference": "Je n’ai pas pu enregistrer votre préférence de modèle. Veuillez réessayer plus tard.",
     "save_default_model_preference": "Je n’ai pas pu enregistrer votre préférence de modèle par défaut. Veuillez réessayer plus tard.",
+    "files_storage": "Je n’ai pas pu mettre à jour vos fichiers enregistrés pour le moment. Veuillez réessayer plus tard.",
     "ollama_generic": "Ollama a renvoyé une erreur. Veuillez réessayer dans quelques instants."
   },
   "agent": {

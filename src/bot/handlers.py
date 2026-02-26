@@ -27,6 +27,7 @@ from telegram.ext import (
 from src.core.context_store import ContextStore, ConversationTurn
 from src.core.model_preferences_store import ModelPreferencesStore
 from src.core.rate_limiter import SlidingWindowRateLimiter
+from src.core.user_assets_store import UserAsset, UserAssetsStore
 from src.i18n import I18nService
 from src.services.ollama_client import (
     OllamaClient,
@@ -40,18 +41,28 @@ logger = logging.getLogger(__name__)
 
 MODEL_CALLBACK_PREFIX = "model:"
 WEB_MODEL_CALLBACK_PREFIX = "webmodel:"
+FILE_CALLBACK_PREFIX = "file:"
 CLEAR_CALLBACK_PREFIX = "clear:"
 MODEL_REFRESH_ACTION = "__refresh__"
 MODEL_DEFAULT_ACTION = "__default__"
 MODEL_PAGE_ACTION_PREFIX = "__page__:"
+MODEL_CLOSE_ACTION = "__close__"
 WEB_MODEL_REFRESH_ACTION = "__refresh__"
 WEB_MODEL_PAGE_ACTION_PREFIX = "__page__:"
+WEB_MODEL_CLOSE_ACTION = "__close__"
+FILE_PAGE_ACTION = "page"
+FILE_TOGGLE_ACTION = "toggle"
+FILE_DELETE_ACTION = "delete"
+FILE_CLOSE_ACTION = "close"
 ICON_INFO = "ℹ️"
 ICON_SUCCESS = "✅"
 ICON_WARNING = "⚠️"
 ICON_ERROR = "❌"
 MODELS_PAGE_SIZE = 8
 WEB_MODELS_PAGE_SIZE = 8
+FILES_PAGE_SIZE = 6
+FILES_CONTEXT_MAX_ITEMS = 3
+FILES_CONTEXT_MAX_CHARS = 6000
 
 
 class BotHandlers:
@@ -60,6 +71,7 @@ class BotHandlers:
         ollama_client: OllamaClient,
         context_store: ContextStore,
         model_preferences_store: ModelPreferencesStore,
+        user_assets_store: UserAssetsStore,
         default_model: str,
         use_chat_api: bool,
         keep_alive: str,
@@ -73,6 +85,7 @@ class BotHandlers:
         self._ollama_client = ollama_client
         self._context_store = context_store
         self._model_preferences_store = model_preferences_store
+        self._user_assets_store = user_assets_store
         self._default_model = default_model
         self._use_chat_api = use_chat_api
         self._keep_alive = keep_alive
@@ -95,9 +108,11 @@ class BotHandlers:
             "commands.clear",
             "commands.models",
             "commands.webmodels",
+            "commands.files",
             "commands.currentmodel",
             "ui.buttons.models",
             "ui.buttons.web_models",
+            "ui.buttons.files",
             "ui.buttons.current_model",
             "ui.buttons.clear",
             "ui.buttons.help",
@@ -109,6 +124,7 @@ class BotHandlers:
             "ui.buttons.next_page",
             "ui.buttons.confirm",
             "ui.buttons.cancel",
+            "ui.buttons.close",
             "ui.input_placeholder",
             "messages.start_welcome",
             "messages.help",
@@ -141,6 +157,12 @@ class BotHandlers:
             "models.not_found",
             "models.not_available_anymore",
             "models.no_models_available",
+            "files.available_title",
+            "files.empty",
+            "files.page_status",
+            "files.instructions",
+            "files.deleted",
+            "files.not_found",
             "web_models.available_title",
             "web_models.select_with",
             "web_models.install_hint",
@@ -165,6 +187,7 @@ class BotHandlers:
             "errors.ollama_validate_model",
             "errors.save_model_preference",
             "errors.save_default_model_preference",
+            "errors.files_storage",
             "errors.ollama_generic",
             "agent.planner_instruction",
             "agent.analyst_instruction",
@@ -183,6 +206,7 @@ class BotHandlers:
                     command="webmodels",
                     description=self._i18n.t("commands.webmodels", locale=locale),
                 ),
+                BotCommand(command="files", description=self._i18n.t("commands.files", locale=locale)),
                 BotCommand(
                     command="currentmodel",
                     description=self._i18n.t("commands.currentmodel", locale=locale),
@@ -370,6 +394,46 @@ class BotHandlers:
             ),
         )
 
+    async def files(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        self._log_user_event("command_files", update)
+
+        try:
+            assets = self._user_assets_store.list_assets(user_id)
+        except Exception as error:
+            logger.exception("Failed to list user assets: %s", error)
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if not assets:
+            await update.effective_message.reply_text(
+                self._info(self._i18n.t("files.empty", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page = 1
+        page_assets, total_pages = self._paginate_assets(assets, page)
+        text = self._files_page_text(locale=locale, assets=page_assets, page=page, total_pages=total_pages)
+        await update.effective_message.reply_text(
+            text,
+            reply_markup=self._files_inline_keyboard(
+                locale=locale,
+                assets=page_assets,
+                page=page,
+                total_pages=total_pages,
+            ),
+        )
+
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
@@ -522,6 +586,15 @@ class BotHandlers:
             await self._show_models_page(update, 1)
             return
 
+        if selected_model == MODEL_CLOSE_ACTION:
+            self._model_search_query_by_user.pop(update.effective_user.id, None)
+            try:
+                await query.message.delete()
+            except Exception as error:
+                logger.debug("Failed to delete local models message: %s", error)
+                await query.edit_message_reply_markup(reply_markup=None)
+            return
+
         if selected_model.startswith(MODEL_PAGE_ACTION_PREFIX):
             page_raw = selected_model.removeprefix(MODEL_PAGE_ACTION_PREFIX).strip()
             if not page_raw.isdigit():
@@ -618,11 +691,135 @@ class BotHandlers:
             await self._show_web_models_page(update, 1)
             return
 
+        if action == WEB_MODEL_CLOSE_ACTION:
+            self._web_model_search_query_by_user.pop(update.effective_user.id, None)
+            try:
+                await query.message.delete()
+            except Exception as error:
+                logger.debug("Failed to delete web models message: %s", error)
+                await query.edit_message_reply_markup(reply_markup=None)
+            return
+
         if action.startswith(WEB_MODEL_PAGE_ACTION_PREFIX):
             page_raw = action.removeprefix(WEB_MODEL_PAGE_ACTION_PREFIX).strip()
             if not page_raw.isdigit():
                 return
             await self._show_web_models_page(update, int(page_raw))
+
+    async def select_file_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
+        query = update.callback_query
+        if not query or not update.effective_user or not query.message:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        await query.answer()
+
+        data = query.data or ""
+        if not data.startswith(FILE_CALLBACK_PREFIX):
+            return
+
+        payload = data.removeprefix(FILE_CALLBACK_PREFIX).strip()
+        parts = payload.split(":")
+        if not parts:
+            return
+
+        action = parts[0]
+        if action == FILE_CLOSE_ACTION:
+            try:
+                await query.message.delete()
+            except Exception as error:
+                logger.debug("Failed to delete files message: %s", error)
+                await query.edit_message_reply_markup(reply_markup=None)
+            return
+
+        if action == FILE_PAGE_ACTION and len(parts) >= 2 and parts[1].isdigit():
+            await self._show_files_page(update=update, page=int(parts[1]))
+            return
+
+        if action in {FILE_TOGGLE_ACTION, FILE_DELETE_ACTION} and len(parts) >= 3:
+            asset_id_raw, page_raw = parts[1], parts[2]
+            if not asset_id_raw.isdigit() or not page_raw.isdigit():
+                return
+
+            asset_id = int(asset_id_raw)
+            page = int(page_raw)
+
+            try:
+                if action == FILE_TOGGLE_ACTION:
+                    asset = self._user_assets_store.get_asset(user_id, asset_id)
+                    if not asset:
+                        await query.message.reply_text(
+                            self._warning(self._i18n.t("files.not_found", locale=locale)),
+                            reply_markup=self._main_keyboard(locale),
+                        )
+                        return
+                    self._user_assets_store.set_selected(user_id, asset_id, not asset.is_selected)
+                else:
+                    deleted = self._user_assets_store.delete_asset(user_id, asset_id)
+                    if not deleted:
+                        await query.message.reply_text(
+                            self._warning(self._i18n.t("files.not_found", locale=locale)),
+                            reply_markup=self._main_keyboard(locale),
+                        )
+                        return
+            except Exception as error:
+                logger.exception("Failed to update file action=%s asset_id=%s error=%s", action, asset_id, error)
+                await query.message.reply_text(
+                    self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+
+            await self._show_files_page(update=update, page=page)
+
+    async def _show_files_page(self, update: Update, page: int) -> None:
+        query = update.callback_query
+        if not query or not update.effective_user or not query.message:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        try:
+            assets = self._user_assets_store.list_assets(user_id)
+        except Exception as error:
+            logger.exception("Failed to list files for pagination: %s", error)
+            await query.message.reply_text(
+                self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if not assets:
+            await self._edit_models_message(
+                query=query,
+                text=self._info(self._i18n.t("files.empty", locale=locale)),
+                reply_markup=InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(text=self._i18n.t("ui.buttons.close", locale=locale), callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CLOSE_ACTION}")]]
+                ),
+            )
+            return
+
+        page_assets, total_pages = self._paginate_assets(assets, page)
+        safe_page = min(max(page, 1), total_pages)
+        text = self._files_page_text(
+            locale=locale,
+            assets=page_assets,
+            page=safe_page,
+            total_pages=total_pages,
+        )
+        await self._edit_models_message(
+            query=query,
+            text=text,
+            reply_markup=self._files_inline_keyboard(
+                locale=locale,
+                assets=page_assets,
+                page=safe_page,
+                total_pages=total_pages,
+            ),
+        )
 
     async def _show_web_models_page(self, update: Update, page: int) -> None:
         query = update.callback_query
@@ -811,6 +1008,9 @@ class BotHandlers:
         if action == "web_models":
             await self.web_models(update, context)
             return
+        if action == "files":
+            await self.files(update, context)
+            return
         if action == "current_model":
             await self.current_model(update, context)
             return
@@ -843,6 +1043,7 @@ class BotHandlers:
         started_at = monotonic()
         agent_name = self._select_agent(user_text)
         system_instruction = self._agent_system_instruction(agent_name, locale)
+        prompt_with_assets = self._augment_prompt_with_selected_assets(user_id=user_id, prompt=user_text)
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
 
@@ -850,7 +1051,7 @@ class BotHandlers:
             ollama_response = await self._generate_response(
                 user_id=user_id,
                 model=model,
-                prompt=user_text,
+                prompt=prompt_with_assets,
                 turns=turns,
                 system_instruction=system_instruction,
             )
@@ -902,6 +1103,10 @@ class BotHandlers:
         user_id = update.effective_user.id
         caption = (message.caption or "").strip()
         user_prompt = caption or self._i18n.t("image.default_prompt", locale=locale)
+        user_prompt_with_assets = self._augment_prompt_with_selected_assets(
+            user_id=user_id,
+            prompt=user_prompt,
+        )
         model = self._get_user_model(user_id)
         turns = self._context_store.get_turns(user_id)
         agent_name = self._select_agent(user_prompt)
@@ -975,7 +1180,7 @@ class BotHandlers:
 
             ollama_response = await self._ollama_client.chat_with_image(
                 model=model,
-                prompt=user_prompt,
+                prompt=user_prompt_with_assets,
                 image_base64=image_base64,
                 context_turns=turns_for_model,
                 keep_alive=self._keep_alive,
@@ -1009,6 +1214,21 @@ class BotHandlers:
 
         self._context_store.append(user_id, role="user", content=f"[Image] {user_prompt}")
         self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+        try:
+            self._user_assets_store.add_asset(
+                user_id=user_id,
+                asset_kind="image",
+                asset_name=(message.document.file_name if message.document else "telegram-photo"),
+                mime_type=(message.document.mime_type if message.document else "image/jpeg") or "image/jpeg",
+                size_bytes=image_bytes_size,
+                content_text=(
+                    f"Image prompt: {user_prompt}\n\n"
+                    f"Image analysis result:\n{ollama_response.text}"
+                ),
+                is_selected=True,
+            )
+        except Exception as error:
+            logger.warning("image_asset_save_failed user_id=%s error=%s", user_id, error)
 
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
@@ -1084,6 +1304,19 @@ class BotHandlers:
 
             trimmed_text = self._trim_document_text(extracted_text)
             caption = (message.caption or "").strip()
+
+            try:
+                self._user_assets_store.add_asset(
+                    user_id=user_id,
+                    asset_kind="document",
+                    asset_name=file_name,
+                    mime_type=mime_type or "application/octet-stream",
+                    size_bytes=len(raw_bytes),
+                    content_text=trimmed_text,
+                    is_selected=True,
+                )
+            except Exception as error:
+                logger.warning("document_asset_save_failed user_id=%s file_name=%s error=%s", user_id, file_name, error)
 
             if not caption:
                 self._context_store.append(
@@ -1382,6 +1615,7 @@ class BotHandlers:
         quick_action_keys = {
             "models": "ui.buttons.models",
             "web_models": "ui.buttons.web_models",
+            "files": "ui.buttons.files",
             "current_model": "ui.buttons.current_model",
             "clear": "ui.buttons.clear",
             "help": "ui.buttons.help",
@@ -1404,6 +1638,104 @@ class BotHandlers:
 
     def _paginate_models(self, models: list[str], page: int) -> tuple[list[str], int]:
         return self._paginate_items(models, page, MODELS_PAGE_SIZE)
+
+    def _paginate_assets(self, assets: list[UserAsset], page: int) -> tuple[list[UserAsset], int]:
+        if not assets:
+            return [], 1
+
+        total_pages = max(1, (len(assets) + FILES_PAGE_SIZE - 1) // FILES_PAGE_SIZE)
+        safe_page = min(max(page, 1), total_pages)
+        start = (safe_page - 1) * FILES_PAGE_SIZE
+        end = start + FILES_PAGE_SIZE
+        return assets[start:end], total_pages
+
+    def _files_page_text(self, *, locale: str, assets: list[UserAsset], page: int, total_pages: int) -> str:
+        lines = [self._info(self._i18n.t("files.available_title", locale=locale))]
+        for asset in assets:
+            selected_marker = "✅" if asset.is_selected else "☑️"
+            kind = "doc" if asset.asset_kind == "document" else "img"
+            lines.append(f"- #{asset.id} [{kind}] {asset.asset_name} {selected_marker}")
+        lines.append("")
+        lines.append(self._i18n.t("files.page_status", locale=locale, page=page, pages=total_pages))
+        lines.append(self._i18n.t("files.instructions", locale=locale))
+        return "\n".join(lines)
+
+    def _files_inline_keyboard(
+        self,
+        *,
+        locale: str,
+        assets: list[UserAsset],
+        page: int,
+        total_pages: int,
+    ) -> InlineKeyboardMarkup:
+        rows: list[list[InlineKeyboardButton]] = []
+        for asset in assets:
+            toggle_label = f"✅ #{asset.id}" if asset.is_selected else f"☑️ #{asset.id}"
+            rows.append(
+                [
+                    InlineKeyboardButton(
+                        text=toggle_label,
+                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_TOGGLE_ACTION}:{asset.id}:{page}",
+                    ),
+                    InlineKeyboardButton(
+                        text=f"🗑 #{asset.id}",
+                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_DELETE_ACTION}:{asset.id}:{page}",
+                    ),
+                ]
+            )
+
+        if total_pages > 1:
+            nav_row: list[InlineKeyboardButton] = []
+            if page > 1:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.prev_page", locale=locale),
+                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_PAGE_ACTION}:{page - 1}",
+                    )
+                )
+            if page < total_pages:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.next_page", locale=locale),
+                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_PAGE_ACTION}:{page + 1}",
+                    )
+                )
+            if nav_row:
+                rows.append(nav_row)
+
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.close", locale=locale),
+                    callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CLOSE_ACTION}",
+                )
+            ]
+        )
+
+        return InlineKeyboardMarkup(rows)
+
+    def _augment_prompt_with_selected_assets(self, *, user_id: int, prompt: str) -> str:
+        try:
+            selected_assets = self._user_assets_store.search_selected_assets(
+                user_id=user_id,
+                query=prompt,
+                limit=FILES_CONTEXT_MAX_ITEMS,
+                max_chars_total=FILES_CONTEXT_MAX_CHARS,
+            )
+        except Exception as error:
+            logger.warning("selected_assets_context_failed user_id=%s error=%s", user_id, error)
+            return prompt
+
+        if not selected_assets:
+            return prompt
+
+        lines = ["Selected user files context:"]
+        for asset in selected_assets:
+            lines.append(f"[File #{asset.id} - {asset.asset_name}]")
+            lines.append(asset.content_text)
+            lines.append("")
+        lines.append(f"User request: {prompt}")
+        return "\n".join(lines)
 
     def _paginate_items(self, items: list[str], page: int, page_size: int) -> tuple[list[str], int]:
         if not items:
@@ -1480,6 +1812,10 @@ class BotHandlers:
                     text=self._i18n.t("ui.buttons.refresh", locale=locale),
                     callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_REFRESH_ACTION}",
                 ),
+                InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.close", locale=locale),
+                    callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_CLOSE_ACTION}",
+                ),
             ]
         )
 
@@ -1533,7 +1869,11 @@ class BotHandlers:
                 InlineKeyboardButton(
                     text=self._i18n.t("ui.buttons.refresh", locale=locale),
                     callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_REFRESH_ACTION}",
-                )
+                ),
+                InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.close", locale=locale),
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CLOSE_ACTION}",
+                ),
             ]
         )
 
@@ -1547,10 +1887,11 @@ class BotHandlers:
                     KeyboardButton(self._i18n.t("ui.buttons.web_models", locale=locale)),
                 ],
                 [
+                    KeyboardButton(self._i18n.t("ui.buttons.files", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
-                    KeyboardButton(self._i18n.t("ui.buttons.clear", locale=locale)),
                 ],
                 [
+                    KeyboardButton(self._i18n.t("ui.buttons.clear", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.help", locale=locale)),
                 ],
             ],
@@ -1584,9 +1925,11 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("clear", handlers.clear))
     application.add_handler(CommandHandler("models", handlers.models))
     application.add_handler(CommandHandler("webmodels", handlers.web_models))
+    application.add_handler(CommandHandler("files", handlers.files))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
     application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))
+    application.add_handler(CallbackQueryHandler(handlers.select_file_callback, pattern=r"^file:"))
     application.add_handler(CallbackQueryHandler(handlers.clear_callback, pattern=r"^clear:"))
     application.add_handler(
         MessageHandler(
