@@ -11,7 +11,8 @@
     "cancel": "Annulla la modalità corrente",
     "currentmodel": "Mostra il tuo modello attuale",
     "deletemodel": "Elimina un modello locale",
-    "info": "Mostra i dettagli del modello"
+    "info": "Mostra i dettagli del modello",
+    "websearch": "Cerca nel web e interroga il modello"
   },
   "ui": {
     "buttons": {
@@ -34,7 +35,8 @@
       "preview": "🖼️ Anteprima",
       "close": "✖️ Chiudi",
       "download": "⬇️ Scarica",
-      "open_web": "🌐 Web"
+      "open_web": "🌐 Web",
+      "search": "🔍 Cerca"
     },
     "input_placeholder": "Scrivi un messaggio o usa i pulsanti…"
   },
@@ -108,7 +110,8 @@
     "download_failed": "❌ Errore durante il download di {model}: {error}",
     "already_downloading": "⏳ {model} è già in fase di download, attendi.",
     "size_select": "Scegli una dimensione da scaricare per {model}:",
-    "download_cancelled": "⏹ Download di {model} annullato."
+    "download_cancelled": "⏹ Download di {model} annullato.",
+    "search_prompt": "Invia la tua ricerca per i modelli web:"
   },
   "image": {
     "default_prompt": "Descrivi questa immagine in dettaglio: identifica tutti gli oggetti visibili, persone, testi, insegne, colori e il contesto o la scena generale.",
@@ -135,6 +138,14 @@
     "save_default_model_preference": "Non sono riuscito a salvare la tua preferenza di modello predefinito. Riprova più tardi.",
     "files_storage": "Non sono riuscito ad aggiornare i tuoi file salvati in questo momento. Riprova più tardi.",
     "ollama_generic": "Ollama ha restituito un errore. Riprova tra qualche istante."
+  },
+  "web_search": {
+    "usage": "Uso: /websearch <ricerca>",
+    "no_api_key": "⚠️ La ricerca web non è configurata. Chiedi all'admin di impostare OLLAMA_API_KEY.",
+    "searching": "🔍 Ricerca sul web: <i>{query}</i>",
+    "no_results": "Nessun risultato web per: <i>{query}</i>",
+    "header": "Risultati della ricerca web per: {query}",
+    "sources_header": "📚 Fonti:"
   },
   "orchestrator": {
     "switched_model": "💡 {model} usato per questa {task}.",

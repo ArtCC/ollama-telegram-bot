@@ -137,6 +137,11 @@ class OllamaClient:
     def can_use_cloud_model(self, model: str) -> bool:
         return self._is_cloud_model(model) and bool(self._api_key)
 
+    @property
+    def web_search_available(self) -> bool:
+        """True when an API key is configured (required for web search)."""
+        return bool(self._api_key)
+
     def _target_base_url(self, model: str | None = None) -> str:
         if model and self.can_use_cloud_model(model):
             return self._cloud_base_url
@@ -387,6 +392,54 @@ class OllamaClient:
                 f"Ollama show returned HTTP {error.response.status_code}: {detail}"
             ) from error
         return response.json()
+
+    async def web_search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+    ) -> list[dict[str, str]]:
+        """Search the web via POST {cloud_base_url}/api/web_search.
+
+        Requires ``OLLAMA_API_KEY`` to be configured. Returns a list of dicts
+        with ``title``, ``url`` and ``content`` keys.
+        """
+        if not self._api_key:
+            raise OllamaError("Web search requires OLLAMA_API_KEY to be set in your configuration.")
+        started_at = monotonic()
+        headers = {
+            "Authorization": f"{self._auth_scheme} {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
+                response = await client.post(
+                    f"{self._cloud_base_url}/api/web_search",
+                    json={"query": query, "max_results": max_results},
+                    headers=headers,
+                )
+            response.raise_for_status()
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError("Web search request timed out") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError(f"Could not connect to Ollama web search: {error}") from error
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code == 401:
+                raise OllamaError("Web search unauthorised — check your OLLAMA_API_KEY.") from error
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Web search returned HTTP {error.response.status_code}: {detail}"
+            ) from error
+        data = response.json()
+        results: list[dict[str, str]] = data.get("results", [])
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "ollama_web_search_done query=%r results=%d elapsed_ms=%d",
+            query,
+            len(results),
+            elapsed_ms,
+        )
+        return results
 
     async def chat(
         self,

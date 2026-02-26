@@ -11,7 +11,8 @@
     "cancel": "Cancel current mode",
     "currentmodel": "Show your current model",
     "deletemodel": "Delete a local model",
-    "info": "Show model details"
+    "info": "Show model details",
+    "websearch": "Search the web and ask the model"
   },
   "ui": {
     "buttons": {
@@ -34,7 +35,8 @@
       "preview": "🖼️ Preview",
       "close": "✖️ Close",
       "download": "⬇️ Download",
-      "open_web": "🌐 Web"
+      "open_web": "🌐 Web",
+      "search": "🔍 Search"
     },
     "input_placeholder": "Write a message or use buttons…"
   },
@@ -108,7 +110,8 @@
     "download_failed": "❌ Failed to download {model}: {error}",
     "already_downloading": "⏳ {model} is already being downloaded, please wait.",
     "size_select": "Choose a size to download for {model}:",
-    "download_cancelled": "⏹ Download of {model} cancelled."
+    "download_cancelled": "⏹ Download of {model} cancelled.",
+    "search_prompt": "Send your search query for web models:"
   },
   "image": {
     "default_prompt": "Describe this image in detail: identify all visible objects, people, text, signs, colours, and the overall context or scene.",
@@ -135,6 +138,14 @@
     "save_default_model_preference": "I could not save your default model preference. Please try again later.",
     "files_storage": "I could not update your saved files right now. Please try again later.",
     "ollama_generic": "Ollama returned an error. Please try again in a few moments."
+  },
+  "web_search": {
+    "usage": "Usage: /websearch <query>",
+    "no_api_key": "⚠️ Web search is not configured. Ask the bot admin to set OLLAMA_API_KEY.",
+    "searching": "🔍 Searching the web for: <i>{query}</i>",
+    "no_results": "No web results found for: <i>{query}</i>",
+    "header": "Web search results for: {query}",
+    "sources_header": "📚 Sources:"
   },
   "orchestrator": {
     "switched_model": "💡 {model} used for this {task}.",

@@ -11,7 +11,8 @@
     "cancel": "Aktuellen Modus abbrechen",
     "currentmodel": "Dein aktuelles Modell anzeigen",
     "deletemodel": "Ein lokales Modell löschen",
-    "info": "Modelldetails anzeigen"
+    "info": "Modelldetails anzeigen",
+    "websearch": "Im Web suchen und Modell befragen"
   },
   "ui": {
     "buttons": {
@@ -34,7 +35,8 @@
       "preview": "🖼️ Vorschau",
       "close": "✖️ Schließen",
       "download": "⬇️ Herunterladen",
-      "open_web": "🌐 Web"
+      "open_web": "🌐 Web",
+      "search": "🔍 Suchen"
     },
     "input_placeholder": "Nachricht schreiben oder Schaltflächen verwenden…"
   },
@@ -108,7 +110,8 @@
     "download_failed": "❌ Fehler beim Herunterladen von {model}: {error}",
     "already_downloading": "⏳ {model} wird bereits heruntergeladen, bitte warte.",
     "size_select": "Wähle eine Größe zum Herunterladen für {model}:",
-    "download_cancelled": "⏹ Download von {model} abgebrochen."
+    "download_cancelled": "⏹ Download von {model} abgebrochen.",
+    "search_prompt": "Sende deine Suchanfrage für Web-Modelle:"
   },
   "image": {
     "default_prompt": "Beschreibe dieses Bild im Detail: erkenne alle sichtbaren Objekte, Personen, Texte, Schilder, Farben und den allgemeinen Kontext oder die Szene.",
@@ -135,6 +138,14 @@
     "save_default_model_preference": "Ich konnte deine Standard-Modellpräferenz nicht speichern. Bitte versuche es später erneut.",
     "files_storage": "Ich konnte deine gespeicherten Dateien gerade nicht aktualisieren. Bitte versuche es später erneut.",
     "ollama_generic": "Ollama hat einen Fehler zurückgegeben. Bitte versuche es in wenigen Augenblicken erneut."
+  },
+  "web_search": {
+    "usage": "Verwendung: /websearch <Anfrage>",
+    "no_api_key": "⚠️ Websuche ist nicht konfiguriert. Bitte den Bot-Admin, OLLAMA_API_KEY zu setzen.",
+    "searching": "🔍 Suche im Web nach: <i>{query}</i>",
+    "no_results": "Keine Web-Ergebnisse gefunden für: <i>{query}</i>",
+    "header": "Web-Suchergebnisse für: {query}",
+    "sources_header": "📚 Quellen:"
   },
   "orchestrator": {
     "switched_model": "💡 {model} für diese {task} verwendet.",

@@ -11,7 +11,8 @@
     "cancel": "Cancelar el modo actual",
     "currentmodel": "Mostrar tu modelo actual",
     "deletemodel": "Eliminar un modelo local",
-    "info": "Mostrar detalles del modelo"
+    "info": "Mostrar detalles del modelo",
+    "websearch": "Buscar en la web y preguntar al modelo"
   },
   "ui": {
     "buttons": {
@@ -34,7 +35,8 @@
       "preview": "🖼️ Vista previa",
       "close": "✖️ Cerrar",
       "download": "⬇️ Descargar",
-      "open_web": "🌐 Web"
+      "open_web": "🌐 Web",
+      "search": "🔍 Buscar"
     },
     "input_placeholder": "Escribe un mensaje o usa los botones…"
   },
@@ -108,7 +110,8 @@
     "download_failed": "❌ Error al descargar {model}: {error}",
     "already_downloading": "⏳ {model} ya se está descargando, espera un momento.",
     "size_select": "Elige el tamaño a descargar para {model}:",
-    "download_cancelled": "⏹ Descarga de {model} cancelada."
+    "download_cancelled": "⏹ Descarga de {model} cancelada.",
+    "search_prompt": "Envía tu consulta de búsqueda de modelos web:"
   },
   "image": {
     "default_prompt": "Describe esta imagen en detalle: identifica todos los objetos visibles, personas, texto, carteles, colores y el contexto o escena general.",
@@ -135,6 +138,14 @@
     "save_default_model_preference": "No he podido guardar tu preferencia de modelo predeterminado. Vuelve a intentarlo más tarde.",
     "files_storage": "No he podido actualizar tus archivos guardados ahora mismo. Vuelve a intentarlo más tarde.",
     "ollama_generic": "Ollama devolvió un error. Vuelve a intentarlo en unos instantes."
+  },
+  "web_search": {
+    "usage": "Uso: /websearch <consulta>",
+    "no_api_key": "⚠️ La búsqueda web no está configurada. Pide al admin del bot que configure OLLAMA_API_KEY.",
+    "searching": "🔍 Buscando en la web: <i>{query}</i>",
+    "no_results": "No se encontraron resultados web para: <i>{query}</i>",
+    "header": "Resultados de búsqueda web para: {query}",
+    "sources_header": "📚 Fuentes:"
   },
   "orchestrator": {
     "switched_model": "💡 {model} usado para esta {task}.",

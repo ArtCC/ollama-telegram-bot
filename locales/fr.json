@@ -11,7 +11,8 @@
     "cancel": "Annuler le mode actuel",
     "currentmodel": "Afficher votre modèle actuel",
     "deletemodel": "Supprimer un modèle local",
-    "info": "Afficher les détails du modèle"
+    "info": "Afficher les détails du modèle",
+    "websearch": "Rechercher sur le web et interroger le modèle"
   },
   "ui": {
     "buttons": {
@@ -34,7 +35,8 @@
       "preview": "🖼️ Aperçu",
       "close": "✖️ Fermer",
       "download": "⬇️ Télécharger",
-      "open_web": "🌐 Web"
+      "open_web": "🌐 Web",
+      "search": "🔍 Rechercher"
     },
     "input_placeholder": "Écrivez un message ou utilisez les boutons…"
   },
@@ -108,7 +110,8 @@
     "download_failed": "❌ Échec du téléchargement de {model} : {error}",
     "already_downloading": "⏳ {model} est déjà en cours de téléchargement, veuillez patienter.",
     "size_select": "Choisissez une taille à télécharger pour {model} :",
-    "download_cancelled": "⏹ Téléchargement de {model} annulé."
+    "download_cancelled": "⏹ Téléchargement de {model} annulé.",
+    "search_prompt": "Envoyez votre requête de recherche pour les modèles web :"
   },
   "image": {
     "default_prompt": "Décrivez cette image en détail : identifiez tous les objets visibles, personnes, textes, panneaux, couleurs et le contexte général ou la scène.",
@@ -135,6 +138,14 @@
     "save_default_model_preference": "Je n’ai pas pu enregistrer votre préférence de modèle par défaut. Veuillez réessayer plus tard.",
     "files_storage": "Je n’ai pas pu mettre à jour vos fichiers enregistrés pour le moment. Veuillez réessayer plus tard.",
     "ollama_generic": "Ollama a renvoyé une erreur. Veuillez réessayer dans quelques instants."
+  },
+  "web_search": {
+    "usage": "Utilisation : /websearch <requête>",
+    "no_api_key": "⚠️ La recherche web n'est pas configurée. Demandez à l'admin de définir OLLAMA_API_KEY.",
+    "searching": "🔍 Recherche sur le web : <i>{query}</i>",
+    "no_results": "Aucun résultat web pour : <i>{query}</i>",
+    "header": "Résultats de recherche web pour : {query}",
+    "sources_header": "📚 Sources :"
   },
   "orchestrator": {
     "switched_model": "💡 {model} utilisé pour cette {task}.",

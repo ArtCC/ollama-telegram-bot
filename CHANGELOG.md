@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.8] - 2026-02-26
+
+- Added **🔍 Search button on `/webmodels` list**: tapping the button enters an interactive search mode — the user's next text message is used as the filter query, updating the list in place. Avoids having to retype `/webmodels <query>` each time.
+- Added `WEB_MODEL_SEARCH_ACTION = "__search__"` callback constant and `_web_model_search_mode_users: set[int]` state tracker to support the interactive search mode.
+- Added `_reply_web_models_page()` helper to render a fresh web models page from a text message context (used by the search mode flow).
+- Added `/websearch <query>` command (`web_search_cmd` handler): calls `POST https://ollama.com/api/web_search` (Ollama Cloud Web Search API), injects up to 5 results as grounded context into the local model prompt, returns the model's answer, and appends a clickable `📚 Sources` footer.
+- Added `web_search()` method to `OllamaClient`: `POST {cloud_base_url}/api/web_search` with `Authorization: Bearer <api_key>` header, returns `list[dict[str,str]]` (`title`, `url`, `content`). Raises `OllamaError("Web search requires OLLAMA_API_KEY")` when key is absent.
+- Added `WEBSEARCH_MAX_RESULTS = 5` and `WEBSEARCH_CONTEXT_MAX_CHARS = 4000` module-level constants.
+- Added `ui.buttons.search`, `commands.websearch`, `web_models.search_prompt`, `web_search.usage`, `web_search.no_api_key`, `web_search.searching`, `web_search.no_results`, `web_search.header`, `web_search.sources_header` i18n keys to all 5 locales.
+- Updated `.env.example`: clarified that `OLLAMA_API_KEY` is also required for `/websearch`.
+- `/cancel` now also clears the web model search mode state.
+
 ## [0.0.7] - 2026-02-26
 
 - Added **rich web model catalog**: `list_web_models()` now scrapes `https://ollama.com/search` instead of `/library`, extracting per-model structured data — description, capabilities (`vision`, `tools`, `thinking`, `embedding`, `cloud`), available sizes, pull count, tag count, and last-updated time. Introduced `WebModelInfo` dataclass and module-level `_parse_web_models()` helper.

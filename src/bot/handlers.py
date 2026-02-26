@@ -13,6 +13,7 @@ from telegram import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     KeyboardButton,
+    LinkPreviewOptions,
     ReplyKeyboardMarkup,
     Update,
 )
@@ -58,6 +59,7 @@ WEB_MODEL_DETAIL_ACTION = "__detail__:"
 WEB_MODEL_DOWNLOAD_ACTION = "__download__:"
 WEB_MODEL_SIZE_ACTION = "__size__:"
 WEB_MODEL_CANCEL_ACTION = "__cancel__:"
+WEB_MODEL_SEARCH_ACTION = "__search__"
 DELETE_MODEL_CALLBACK_PREFIX = "delmod:"
 DELETE_MODEL_CONFIRM_ACTION = "confirm"
 DELETE_MODEL_ABORT_ACTION = "abort"
@@ -77,6 +79,8 @@ MODELS_PAGE_SIZE = 8
 WEB_MODELS_PAGE_SIZE = 8
 FILES_PAGE_SIZE = 6
 FILES_CONTEXT_MAX_ITEMS_DEFAULT = 3
+WEBSEARCH_MAX_RESULTS = 5
+WEBSEARCH_CONTEXT_MAX_CHARS = 4000
 FILES_CONTEXT_MAX_CHARS_DEFAULT = 6000
 
 
@@ -120,6 +124,7 @@ class BotHandlers:
         self._web_model_search_query_by_user: dict[int, str] = {}
         self._model_downloads_in_progress: set[str] = set()
         self._download_cancel_events: dict[str, asyncio.Event] = {}
+        self._web_model_search_mode_users: set[int] = set()
         self._web_models_cache: list[WebModelInfo] = []
         self._web_models_cache_expires: float = 0.0
         self._askfile_target_by_user: dict[int, int] = {}
@@ -240,8 +245,11 @@ class BotHandlers:
             "web_models.size_select",
             "ui.buttons.download",
             "ui.buttons.open_web",
+            "ui.buttons.search",
             "commands.deletemodel",
             "commands.info",
+            "commands.websearch",
+            "web_models.search_prompt",
             "web_models.download_cancelled",
             "models.delete_usage",
             "models.delete_confirm",
@@ -249,6 +257,12 @@ class BotHandlers:
             "models.delete_failed",
             "models.delete_not_found",
             "models.info_not_found",
+            "web_search.no_api_key",
+            "web_search.searching",
+            "web_search.no_results",
+            "web_search.header",
+            "web_search.sources_header",
+            "web_search.usage",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -277,6 +291,10 @@ class BotHandlers:
                 BotCommand(
                     command="info",
                     description=self._i18n.t("commands.info", locale=locale),
+                ),
+                BotCommand(
+                    command="websearch",
+                    description=self._i18n.t("commands.websearch", locale=locale),
                 ),
             ]
             if locale == self._i18n.default_locale:
@@ -678,8 +696,10 @@ class BotHandlers:
         user_id = update.effective_user.id
         was_upload = user_id in self._upload_mode_users
         self._upload_mode_users.discard(user_id)
+        was_web_search_mode = user_id in self._web_model_search_mode_users
+        self._web_model_search_mode_users.discard(user_id)
         pending = self._askfile_target_by_user.pop(user_id, None)
-        if pending is not None or was_upload:
+        if pending is not None or was_upload or was_web_search_mode:
             await update.effective_message.reply_text(
                 self._i18n.t("messages.cancel_ask_done", locale=locale),
                 reply_markup=self._main_keyboard(locale),
@@ -942,6 +962,15 @@ class BotHandlers:
             return
 
         action = data.removeprefix(WEB_MODEL_CALLBACK_PREFIX).strip()
+        if action == WEB_MODEL_SEARCH_ACTION:
+            user_id = update.effective_user.id
+            self._web_model_search_mode_users.add(user_id)
+            await query.answer()
+            await query.message.reply_text(
+                self._i18n.t("web_models.search_prompt", locale=locale),
+            )
+            return
+
         if action == WEB_MODEL_REFRESH_ACTION:
             self._web_model_search_query_by_user[update.effective_user.id] = ""
             await self._show_web_models_page(update, 1)
@@ -1433,6 +1462,129 @@ class BotHandlers:
             reply_markup=self._main_keyboard(locale),
         )
 
+    # ------------------------------------------------------------------ #
+    #  /websearch                                                          #
+    # ------------------------------------------------------------------ #
+
+    async def web_search_cmd(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._guard_access(update, apply_rate_limit=True):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+
+        query_str = " ".join(context.args).strip() if context.args else ""
+        if not query_str:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("web_search.usage", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        # Check API key
+        if not self._ollama_client.web_search_available:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("web_search.no_api_key", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        # Inform user
+        await update.effective_message.reply_text(
+            self._info(self._i18n.t("web_search.searching", locale=locale, query=query_str)),
+        )
+        await update.effective_chat.send_action(action=ChatAction.TYPING)
+
+        try:
+            results = await self._ollama_client.web_search(
+                query_str, max_results=WEBSEARCH_MAX_RESULTS
+            )
+        except (OllamaError, OllamaTimeoutError, OllamaConnectionError) as error:
+            await update.effective_message.reply_text(
+                self._error(str(error)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if not results:
+            await update.effective_message.reply_text(
+                self._info(self._i18n.t("web_search.no_results", locale=locale, query=query_str)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        # Build context block from results
+        context_parts: list[str] = [
+            self._i18n.t("web_search.header", locale=locale, query=query_str)
+        ]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "")
+            url = r.get("url", "")
+            content = r.get("content", "")[:400]
+            context_parts.append(f"[{i}] {title} ({url})\n{content}")
+        context_block = "\n\n".join(context_parts)
+
+        # Truncate to max chars
+        if len(context_block) > WEBSEARCH_CONTEXT_MAX_CHARS:
+            context_block = context_block[:WEBSEARCH_CONTEXT_MAX_CHARS] + "…"
+
+        enriched_prompt = f"{context_block}\n\n---\n{query_str}"
+
+        turns = self._context_store.get_turns(user_id)
+        model = self._get_user_model(user_id)
+        system_instruction = self._agent_system_instruction("chat", locale)
+
+        try:
+            ollama_response = await self._generate_response(
+                user_id=user_id,
+                model=model,
+                prompt=enriched_prompt,
+                turns=turns,
+                system_instruction=system_instruction,
+            )
+        except OllamaTimeoutError:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError:
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_generic", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        self._context_store.append(user_id, role="user", content=query_str)
+        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+
+        for chunk in split_message(ollama_response.text):
+            await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+
+        # Sources footer
+        sources_lines = [
+            f"\n{self._i18n.t('web_search.sources_header', locale=locale)}"
+        ]
+        for i, r in enumerate(results, 1):
+            title = r.get("title", "")
+            url = r.get("url", "")
+            sources_lines.append(f"[{i}] <a href=\"{url}\">{title or url}</a>")
+        await update.effective_message.reply_text(
+            "\n".join(sources_lines),
+            parse_mode=ParseMode.HTML,
+            link_preview_options=LinkPreviewOptions(is_disabled=True),
+            reply_markup=self._main_keyboard(locale),
+        )
+
     async def select_file_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
@@ -1709,6 +1861,76 @@ class BotHandlers:
             ),
         )
 
+    async def _reply_web_models_page(self, update: Update, page: int) -> None:
+        """Send (not edit) a fresh web models page — used from text handlers."""
+        if not update.effective_message or not update.effective_user:
+            return
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+
+        try:
+            models = await self._fetch_web_models()
+        except OllamaTimeoutError:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama error in reply_web_models_page: %s", error)
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_list_web_models", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        search_query = self._web_model_search_query_by_user.get(user_id, "")
+        filtered_models = self._filter_web_models(models, search_query)
+        if not filtered_models:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("web_models.no_matches", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page_models, total_pages = self._paginate_items(filtered_models, page, WEB_MODELS_PAGE_SIZE)
+        safe_page = min(max(page, 1), total_pages)
+
+        lines = [self._info(self._i18n.t("web_models.available_title", locale=locale))]
+        for m in page_models:
+            badges = []
+            if "vision" in m.capabilities:
+                badges.append("👁")
+            if "thinking" in m.capabilities:
+                badges.append("💭")
+            line = f"- {m.name}"
+            if badges:
+                line += "  " + " ".join(badges)
+            if m.sizes:
+                line += "  📦 " + " · ".join(m.sizes[:4])
+            lines.append(line)
+        lines.append("")
+        lines.append(
+            self._i18n.t("web_models.page_status", locale=locale, page=safe_page, pages=total_pages)
+        )
+        lines.append(self._i18n.t("web_models.select_with", locale=locale))
+
+        await update.effective_message.reply_text(
+            "\n".join(lines),
+            reply_markup=self._web_models_inline_keyboard(
+                locale=locale,
+                models=page_models,
+                page=safe_page,
+                total_pages=total_pages,
+            ),
+        )
+
     async def _fetch_web_models(self) -> list[WebModelInfo]:
         """Return cached web model list, refreshing if the TTL has expired."""
         now = monotonic()
@@ -1946,6 +2168,13 @@ class BotHandlers:
                 asset=pending_asset,
                 prompt=user_text,
             )
+            return
+
+        # Web model search mode: next text message is a search query for /webmodels
+        if user_id in self._web_model_search_mode_users:
+            self._web_model_search_mode_users.discard(user_id)
+            self._web_model_search_query_by_user[user_id] = user_text
+            await self._reply_web_models_page(update, 1)
             return
 
         turns = self._context_store.get_turns(user_id)
@@ -3231,6 +3460,10 @@ class BotHandlers:
         rows.append(
             [
                 InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.search", locale=locale),
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SEARCH_ACTION}",
+                ),
+                InlineKeyboardButton(
                     text=self._i18n.t("ui.buttons.refresh", locale=locale),
                     callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_REFRESH_ACTION}",
                 ),
@@ -3295,6 +3528,7 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
     application.add_handler(CommandHandler("deletemodel", handlers.delete_model))
     application.add_handler(CommandHandler("info", handlers.model_info))
+    application.add_handler(CommandHandler("websearch", handlers.web_search_cmd))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
     application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))
     application.add_handler(CallbackQueryHandler(handlers.select_file_callback, pattern=r"^file:"))
