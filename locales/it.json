@@ -5,11 +5,13 @@
     "health": "Esegui controlli operativi",
     "clear": "Cancella il contesto della conversazione",
     "models": "Elenca o seleziona modello",
+    "webmodels": "Esplora modelli web installabili",
     "currentmodel": "Mostra il tuo modello attuale"
   },
   "ui": {
     "buttons": {
       "models": "🧠 Modelli",
+      "web_models": "🌐 Modelli web",
       "current_model": "📌 Modello attuale",
       "clear": "🧹 Cancella contesto",
       "help": "❓ Aiuto",
@@ -26,7 +28,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>Benvenuto!</b> Invia un messaggio e chiederò una risposta a Ollama.\nUsa i pulsanti qui sotto o i comandi slash.",
-    "help": "ℹ️ Comandi disponibili:\n/start - Avvia il bot\n/help - Mostra questo aiuto\n/health - Controlla runtime, database e stato di Ollama\n/clear - Cancella il tuo contesto\n/models - Elenca i modelli o selezionane uno con /models <name>\n/currentmodel - Mostra il tuo modello attivo\n\nPuoi inviare messaggi di testo o immagini (con istruzioni opzionali nella didascalia).",
+    "help": "ℹ️ Comandi disponibili:\n/start - Avvia il bot\n/help - Mostra questo aiuto\n/health - Controlla runtime, database e stato di Ollama\n/clear - Cancella il tuo contesto\n/models - Elenca i modelli locali o selezionane uno con /models <name>\n/webmodels - Esplora i modelli web disponibili da installare\n/currentmodel - Mostra il tuo modello attivo\n\nPuoi inviare messaggi di testo o immagini (con istruzioni opzionali nella didascalia).",
     "please_send_non_empty": "Per favore invia un messaggio non vuoto.",
     "voice_disabled": "I messaggi vocali e audio sono disabilitati. Invia messaggi di testo o immagini.",
     "clear_confirm": "<b>Cancellare il contesto?</b>\nQuesto rimuoverà la memoria attuale della chat.",
@@ -61,6 +63,14 @@
     "page_status": "Pagina {page}/{pages}",
     "no_models_available": "Al momento non ci sono modelli disponibili in Ollama."
   },
+  "web_models": {
+    "available_title": "Modelli web disponibili da installare:",
+    "select_with": "Filtra con: /webmodels <query>",
+    "install_hint": "Installa in locale con: ollama pull <model>",
+    "page_status": "Pagina {page}/{pages}",
+    "no_matches": "Nessun modello web corrisponde alla tua ricerca. Prova con un altro termine.",
+    "no_models_available": "Al momento non ci sono modelli web disponibili."
+  },
   "image": {
     "default_prompt": "Descrivi l’immagine ed estrai qualsiasi testo visibile, se presente.",
     "model_without_vision": "Il tuo modello attuale ({model}) non supporta le immagini. Usa /models per scegliere un modello con visione.",
@@ -80,6 +90,7 @@
     "ollama_timeout": "Ollama sta impiegando troppo tempo a rispondere. Riprova tra poco.",
     "ollama_connection": "Non sono riuscito a connettermi a Ollama. Contatta l’amministratore del bot.",
     "ollama_list_models": "Non sono riuscito a caricare i modelli da Ollama in questo momento. Riprova più tardi.",
+    "ollama_list_web_models": "Non sono riuscito a caricare i modelli web in questo momento. Riprova più tardi.",
     "ollama_validate_model": "Non sono riuscito a validare il modello selezionato in questo momento. Riprova più tardi.",
     "save_model_preference": "Non sono riuscito a salvare la tua preferenza di modello. Riprova più tardi.",
     "save_default_model_preference": "Non sono riuscito a salvare la tua preferenza di modello predefinito. Riprova più tardi.",

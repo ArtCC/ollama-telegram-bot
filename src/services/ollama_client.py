@@ -145,6 +145,66 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
 
+    async def list_web_models(self) -> list[str]:
+        started_at = monotonic()
+        last_error: Exception | None = None
+        library_url = "https://ollama.com/library"
+        pattern = re.compile(r'href="/library/([a-zA-Z0-9][a-zA-Z0-9._:-]*)"')
+
+        for attempt in range(self._retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self._timeout) as client:
+                    response = await client.get(library_url)
+                response.raise_for_status()
+
+                matches = pattern.findall(response.text)
+                models: list[str] = []
+                seen: set[str] = set()
+                for item in matches:
+                    name = item.strip()
+                    if not name:
+                        continue
+                    if name in seen:
+                        continue
+                    seen.add(name)
+                    models.append(name)
+
+                elapsed_ms = int((monotonic() - started_at) * 1000)
+                logger.info("ollama_list_web_models_ok count=%d elapsed_ms=%d", len(models), elapsed_ms)
+                return models
+            except httpx.TimeoutException as error:
+                last_error = error
+                if attempt < self._retries:
+                    logger.warning(
+                        "ollama_list_web_models_timeout_retry attempt=%d/%d",
+                        attempt + 1,
+                        self._retries + 1,
+                    )
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaTimeoutError("Ollama web models request timed out") from error
+            except httpx.RequestError as error:
+                last_error = error
+                if attempt < self._retries:
+                    logger.warning(
+                        "ollama_list_web_models_connection_retry attempt=%d/%d",
+                        attempt + 1,
+                        self._retries + 1,
+                    )
+                    await asyncio.sleep(0.5 * (2**attempt))
+                    continue
+                raise OllamaConnectionError("Could not reach Ollama web catalog") from error
+            except httpx.HTTPStatusError as error:
+                detail = error.response.text[:300]
+                logger.warning("ollama_list_web_models_http_error status=%d", error.response.status_code)
+                raise OllamaError(
+                    f"Ollama web catalog returned HTTP {error.response.status_code}: {detail}"
+                ) from error
+
+        if last_error:
+            raise OllamaError("Unexpected Ollama web catalog failure") from last_error
+        raise OllamaError("Unexpected Ollama web catalog failure")
+
     async def chat(
         self,
         *,

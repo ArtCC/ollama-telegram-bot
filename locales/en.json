@@ -5,11 +5,13 @@
     "health": "Run operational checks",
     "clear": "Clear conversation context",
     "models": "List or select model",
+    "webmodels": "Browse installable web models",
     "currentmodel": "Show your current model"
   },
   "ui": {
     "buttons": {
       "models": "🧠 Models",
+      "web_models": "🌐 Web Models",
       "current_model": "📌 Current Model",
       "clear": "🧹 Clear Context",
       "help": "❓ Help",
@@ -26,7 +28,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\nUse the buttons below or slash commands.",
-    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List models or select one with /models <name>\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
     "please_send_non_empty": "Please send a non-empty message.",
     "voice_disabled": "Voice and audio messages are disabled. Please send text or image messages.",
     "clear_confirm": "<b>Clear context?</b>\nThis will remove your current chat memory.",
@@ -61,6 +63,14 @@
     "page_status": "Page {page}/{pages}",
     "no_models_available": "No models are currently available in Ollama."
   },
+  "web_models": {
+    "available_title": "Web models available to install:",
+    "select_with": "Filter with: /webmodels <query>",
+    "install_hint": "Install locally with: ollama pull <model>",
+    "page_status": "Page {page}/{pages}",
+    "no_matches": "No web models match your search. Try another term.",
+    "no_models_available": "No web models are currently available."
+  },
   "image": {
     "default_prompt": "Describe the image and extract any visible text if present.",
     "model_without_vision": "Your current model ({model}) does not support images. Use /models to choose a vision model.",
@@ -80,6 +90,7 @@
     "ollama_timeout": "Ollama is taking too long to respond. Please try again shortly.",
     "ollama_connection": "I could not connect to Ollama. Please contact the bot administrator.",
     "ollama_list_models": "I could not load models from Ollama right now. Please try again later.",
+    "ollama_list_web_models": "I could not load web models right now. Please try again later.",
     "ollama_validate_model": "I could not validate the selected model right now. Please try again later.",
     "save_model_preference": "I could not save your model preference. Please try again later.",
     "save_default_model_preference": "I could not save your default model preference. Please try again later.",

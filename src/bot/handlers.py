@@ -39,15 +39,19 @@ from src.utils.telegram import split_message
 logger = logging.getLogger(__name__)
 
 MODEL_CALLBACK_PREFIX = "model:"
+WEB_MODEL_CALLBACK_PREFIX = "webmodel:"
 CLEAR_CALLBACK_PREFIX = "clear:"
 MODEL_REFRESH_ACTION = "__refresh__"
 MODEL_DEFAULT_ACTION = "__default__"
 MODEL_PAGE_ACTION_PREFIX = "__page__:"
+WEB_MODEL_REFRESH_ACTION = "__refresh__"
+WEB_MODEL_PAGE_ACTION_PREFIX = "__page__:"
 ICON_INFO = "ℹ️"
 ICON_SUCCESS = "✅"
 ICON_WARNING = "⚠️"
 ICON_ERROR = "❌"
 MODELS_PAGE_SIZE = 8
+WEB_MODELS_PAGE_SIZE = 8
 
 
 class BotHandlers:
@@ -80,6 +84,7 @@ class BotHandlers:
         self._rate_limiter = rate_limiter
         self._quick_action_map = self._build_quick_action_map()
         self._model_search_query_by_user: dict[int, str] = {}
+        self._web_model_search_query_by_user: dict[int, str] = {}
 
     @staticmethod
     def required_i18n_keys() -> tuple[str, ...]:
@@ -89,8 +94,10 @@ class BotHandlers:
             "commands.health",
             "commands.clear",
             "commands.models",
+            "commands.webmodels",
             "commands.currentmodel",
             "ui.buttons.models",
+            "ui.buttons.web_models",
             "ui.buttons.current_model",
             "ui.buttons.clear",
             "ui.buttons.help",
@@ -134,6 +141,12 @@ class BotHandlers:
             "models.not_found",
             "models.not_available_anymore",
             "models.no_models_available",
+            "web_models.available_title",
+            "web_models.select_with",
+            "web_models.install_hint",
+            "web_models.page_status",
+            "web_models.no_matches",
+            "web_models.no_models_available",
             "image.default_prompt",
             "image.model_without_vision",
             "image.too_large",
@@ -148,6 +161,7 @@ class BotHandlers:
             "errors.ollama_timeout",
             "errors.ollama_connection",
             "errors.ollama_list_models",
+            "errors.ollama_list_web_models",
             "errors.ollama_validate_model",
             "errors.save_model_preference",
             "errors.save_default_model_preference",
@@ -165,6 +179,10 @@ class BotHandlers:
                 BotCommand(command="health", description=self._i18n.t("commands.health", locale=locale)),
                 BotCommand(command="clear", description=self._i18n.t("commands.clear", locale=locale)),
                 BotCommand(command="models", description=self._i18n.t("commands.models", locale=locale)),
+                BotCommand(
+                    command="webmodels",
+                    description=self._i18n.t("commands.webmodels", locale=locale),
+                ),
                 BotCommand(
                     command="currentmodel",
                     description=self._i18n.t("commands.currentmodel", locale=locale),
@@ -282,6 +300,76 @@ class BotHandlers:
             reply_markup=self._clear_inline_keyboard(locale),
         )
 
+    async def web_models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not await self._guard_access(update):
+            return
+        if not update.effective_message or not update.effective_user:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+        self._log_user_event("command_webmodels", update)
+        search_query = " ".join(context.args).strip() if context.args else ""
+
+        try:
+            models = await self._ollama_client.list_web_models()
+        except OllamaTimeoutError:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama error while listing web models: %s", error)
+            await update.effective_message.reply_text(
+                self._error(self._i18n.t("errors.ollama_list_web_models", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        if not models:
+            await update.effective_message.reply_text(
+                self._info(self._i18n.t("web_models.no_models_available", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        self._web_model_search_query_by_user[user_id] = search_query
+        filtered_models = self._filter_models(models, search_query)
+        if not filtered_models:
+            await update.effective_message.reply_text(
+                self._warning(self._i18n.t("web_models.no_matches", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page = 1
+        page_models, total_pages = self._paginate_items(filtered_models, page, WEB_MODELS_PAGE_SIZE)
+
+        lines = [self._info(self._i18n.t("web_models.available_title", locale=locale))]
+        for model in page_models:
+            lines.append(f"- {model}")
+        lines.append("")
+        lines.append(self._i18n.t("web_models.page_status", locale=locale, page=page, pages=total_pages))
+        lines.append(self._i18n.t("web_models.select_with", locale=locale))
+        lines.append(self._i18n.t("web_models.install_hint", locale=locale))
+
+        await update.effective_message.reply_text(
+            "\n".join(lines),
+            reply_markup=self._web_models_inline_keyboard(
+                locale=locale,
+                models=page_models,
+                page=page,
+                total_pages=total_pages,
+            ),
+        )
+
     async def models(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):
             return
@@ -322,30 +410,9 @@ class BotHandlers:
             )
             return
 
-        if requested_model:
-            if requested_model not in models:
-                if self._ollama_client.can_use_cloud_model(requested_model):
-                    try:
-                        self._model_preferences_store.set_user_model(user_id, requested_model)
-                    except Exception as error:
-                        logger.exception("Failed to save cloud user model preference: %s", error)
-                        await update.effective_message.reply_text(
-                            self._error(self._i18n.t("errors.save_model_preference", locale=locale)),
-                            reply_markup=self._main_keyboard(locale),
-                        )
-                        return
-                    await update.effective_message.reply_text(
-                        self._success(
-                            self._i18n.t("models.updated", locale=locale, model=requested_model)
-                        ),
-                        reply_markup=self._main_keyboard(locale),
-                    )
-                    return
-                await update.effective_message.reply_text(
-                    self._warning(self._i18n.t("models.not_found", locale=locale)),
-                    reply_markup=self._main_keyboard(locale),
-                )
-                return
+        if requested_model and (
+            requested_model in models or self._ollama_client.can_use_cloud_model(requested_model)
+        ):
             try:
                 self._model_preferences_store.set_user_model(user_id, requested_model)
             except Exception as error:
@@ -528,6 +595,93 @@ class BotHandlers:
             reply_markup=self._main_keyboard(locale),
         )
 
+    async def select_web_model_callback(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE
+    ) -> None:
+        if not await self._guard_access(update):
+            return
+        query = update.callback_query
+        if not query or not update.effective_user or not query.message:
+            return
+
+        locale = self._locale(update)
+        await query.answer()
+
+        data = query.data or ""
+        if not data.startswith(WEB_MODEL_CALLBACK_PREFIX):
+            return
+
+        action = data.removeprefix(WEB_MODEL_CALLBACK_PREFIX).strip()
+        if action == WEB_MODEL_REFRESH_ACTION:
+            await self.web_models(update, context)
+            return
+
+        if action.startswith(WEB_MODEL_PAGE_ACTION_PREFIX):
+            page_raw = action.removeprefix(WEB_MODEL_PAGE_ACTION_PREFIX).strip()
+            if not page_raw.isdigit():
+                return
+            await self._show_web_models_page(update, int(page_raw))
+
+    async def _show_web_models_page(self, update: Update, page: int) -> None:
+        query = update.callback_query
+        if not query or not update.effective_user or not query.message:
+            return
+
+        locale = self._locale(update)
+        user_id = update.effective_user.id
+
+        try:
+            models = await self._ollama_client.list_web_models()
+        except OllamaTimeoutError:
+            await query.message.reply_text(
+                self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaConnectionError:
+            await query.message.reply_text(
+                self._error(self._i18n.t("errors.ollama_connection", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+        except OllamaError as error:
+            logger.warning("Ollama error while paginating web models: %s", error)
+            await query.message.reply_text(
+                self._error(self._i18n.t("errors.ollama_list_web_models", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        search_query = self._web_model_search_query_by_user.get(user_id, "")
+        filtered_models = self._filter_models(models, search_query)
+        if not filtered_models:
+            await query.message.reply_text(
+                self._warning(self._i18n.t("web_models.no_matches", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
+
+        page_models, total_pages = self._paginate_items(filtered_models, page, WEB_MODELS_PAGE_SIZE)
+        safe_page = min(max(page, 1), total_pages)
+
+        lines = [self._info(self._i18n.t("web_models.available_title", locale=locale))]
+        for model in page_models:
+            lines.append(f"- {model}")
+        lines.append("")
+        lines.append(self._i18n.t("web_models.page_status", locale=locale, page=safe_page, pages=total_pages))
+        lines.append(self._i18n.t("web_models.select_with", locale=locale))
+        lines.append(self._i18n.t("web_models.install_hint", locale=locale))
+
+        await query.message.reply_text(
+            "\n".join(lines),
+            reply_markup=self._web_models_inline_keyboard(
+                locale=locale,
+                models=page_models,
+                page=safe_page,
+                total_pages=total_pages,
+            ),
+        )
+
     async def _show_models_page(self, update: Update, page: int) -> None:
         query = update.callback_query
         if not query or not update.effective_user or not query.message:
@@ -629,6 +783,9 @@ class BotHandlers:
         action = self._quick_action_map.get(text)
         if action == "models":
             await self.models(update, context)
+            return
+        if action == "web_models":
+            await self.web_models(update, context)
             return
         if action == "current_model":
             await self.current_model(update, context)
@@ -1200,6 +1357,7 @@ class BotHandlers:
     def _build_quick_action_map(self) -> dict[str, str]:
         quick_action_keys = {
             "models": "ui.buttons.models",
+            "web_models": "ui.buttons.web_models",
             "current_model": "ui.buttons.current_model",
             "clear": "ui.buttons.clear",
             "help": "ui.buttons.help",
@@ -1221,14 +1379,17 @@ class BotHandlers:
         return [model for model in models if search in model.lower()]
 
     def _paginate_models(self, models: list[str], page: int) -> tuple[list[str], int]:
-        if not models:
+        return self._paginate_items(models, page, MODELS_PAGE_SIZE)
+
+    def _paginate_items(self, items: list[str], page: int, page_size: int) -> tuple[list[str], int]:
+        if not items:
             return [], 1
 
-        total_pages = max(1, (len(models) + MODELS_PAGE_SIZE - 1) // MODELS_PAGE_SIZE)
+        total_pages = max(1, (len(items) + page_size - 1) // page_size)
         safe_page = min(max(page, 1), total_pages)
-        start = (safe_page - 1) * MODELS_PAGE_SIZE
-        end = start + MODELS_PAGE_SIZE
-        return models[start:end], total_pages
+        start = (safe_page - 1) * page_size
+        end = start + page_size
+        return items[start:end], total_pages
 
     def _models_inline_keyboard(
         self,
@@ -1300,15 +1461,72 @@ class BotHandlers:
 
         return InlineKeyboardMarkup(rows)
 
+    def _web_models_inline_keyboard(
+        self,
+        locale: str,
+        models: list[str],
+        page: int,
+        total_pages: int,
+    ) -> InlineKeyboardMarkup:
+        rows: list[list[InlineKeyboardButton]] = []
+        row: list[InlineKeyboardButton] = []
+
+        for model in models:
+            row.append(
+                InlineKeyboardButton(
+                    text=model,
+                    url=f"https://ollama.com/library/{model}",
+                )
+            )
+            if len(row) == 2:
+                rows.append(row)
+                row = []
+
+        if row:
+            rows.append(row)
+
+        if total_pages > 1:
+            nav_row: list[InlineKeyboardButton] = []
+            if page > 1:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.prev_page", locale=locale),
+                        callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_PAGE_ACTION_PREFIX}{page - 1}",
+                    )
+                )
+            if page < total_pages:
+                nav_row.append(
+                    InlineKeyboardButton(
+                        text=self._i18n.t("ui.buttons.next_page", locale=locale),
+                        callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_PAGE_ACTION_PREFIX}{page + 1}",
+                    )
+                )
+            if nav_row:
+                rows.append(nav_row)
+
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=self._i18n.t("ui.buttons.refresh", locale=locale),
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_REFRESH_ACTION}",
+                )
+            ]
+        )
+
+        return InlineKeyboardMarkup(rows)
+
     def _main_keyboard(self, locale: str) -> ReplyKeyboardMarkup:
         return ReplyKeyboardMarkup(
             keyboard=[
                 [
                     KeyboardButton(self._i18n.t("ui.buttons.models", locale=locale)),
-                    KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
+                    KeyboardButton(self._i18n.t("ui.buttons.web_models", locale=locale)),
                 ],
                 [
+                    KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.clear", locale=locale)),
+                ],
+                [
                     KeyboardButton(self._i18n.t("ui.buttons.help", locale=locale)),
                 ],
             ],
@@ -1341,8 +1559,10 @@ def register_handlers(application: Application, handlers: BotHandlers) -> None:
     application.add_handler(CommandHandler("health", handlers.health))
     application.add_handler(CommandHandler("clear", handlers.clear))
     application.add_handler(CommandHandler("models", handlers.models))
+    application.add_handler(CommandHandler("webmodels", handlers.web_models))
     application.add_handler(CommandHandler("currentmodel", handlers.current_model))
     application.add_handler(CallbackQueryHandler(handlers.select_model_callback, pattern=r"^model:"))
+    application.add_handler(CallbackQueryHandler(handlers.select_web_model_callback, pattern=r"^webmodel:"))
     application.add_handler(CallbackQueryHandler(handlers.clear_callback, pattern=r"^clear:"))
     application.add_handler(
         MessageHandler(

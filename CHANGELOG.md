@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.7] - 2026-02-26
+
+### Added
+- Added dedicated `/webmodels` command to browse Ollama web catalog models available to install (separate from local `/models`).
+- Added independent web-model pagination and search flow (`/webmodels <query>`) with inline previous/next navigation.
+- Added direct web catalog links per model and install guidance (`ollama pull <model>`) in bot responses.
+
+### Changed
+- Updated command registry, quick actions keyboard, and localized help text to clearly separate local models and web catalog models.
+
 ## [0.0.6] - 2026-02-26
 
 ### Added

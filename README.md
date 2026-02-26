@@ -99,6 +99,7 @@ ollama-telegram-bot/
 - [x] Localization support with user Telegram language resolution and English fallback.
 - [x] Locale files available for `en`, `es`, `de`, `fr`, and `it`.
 - [x] `/models` model browser with inline pagination (previous/next) and name filtering via `/models <query>`.
+- [x] `/webmodels` independent browser for Ollama web catalog models available to install, with its own search and pagination.
 
 ## Configuration
 
