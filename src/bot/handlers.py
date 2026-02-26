@@ -518,7 +518,8 @@ class BotHandlers:
             return
 
         if selected_model == MODEL_REFRESH_ACTION:
-            await self.models(update, context)
+            self._model_search_query_by_user[update.effective_user.id] = ""
+            await self._show_models_page(update, 1)
             return
 
         if selected_model.startswith(MODEL_PAGE_ACTION_PREFIX):
@@ -613,7 +614,8 @@ class BotHandlers:
 
         action = data.removeprefix(WEB_MODEL_CALLBACK_PREFIX).strip()
         if action == WEB_MODEL_REFRESH_ACTION:
-            await self.web_models(update, context)
+            self._web_model_search_query_by_user[update.effective_user.id] = ""
+            await self._show_web_models_page(update, 1)
             return
 
         if action.startswith(WEB_MODEL_PAGE_ACTION_PREFIX):
@@ -672,8 +674,9 @@ class BotHandlers:
         lines.append(self._i18n.t("web_models.select_with", locale=locale))
         lines.append(self._i18n.t("web_models.install_hint", locale=locale))
 
-        await query.message.reply_text(
-            "\n".join(lines),
+        await self._edit_models_message(
+            query=query,
+            text="\n".join(lines),
             reply_markup=self._web_models_inline_keyboard(
                 locale=locale,
                 models=page_models,
@@ -734,8 +737,9 @@ class BotHandlers:
         lines.append(self._i18n.t("models.select_with", locale=locale))
         lines.append(self._i18n.t("models.tap_button", locale=locale))
 
-        await query.message.reply_text(
-            "\n".join(lines),
+        await self._edit_models_message(
+            query=query,
+            text="\n".join(lines),
             reply_markup=self._models_inline_keyboard(
                 locale,
                 models=page_models,
@@ -744,6 +748,26 @@ class BotHandlers:
                 total_pages=total_pages,
             ),
         )
+
+    async def _edit_models_message(
+        self,
+        *,
+        query,
+        text: str,
+        reply_markup: InlineKeyboardMarkup,
+    ) -> None:
+        try:
+            await query.edit_message_text(
+                text=text,
+                reply_markup=reply_markup,
+            )
+        except Exception as error:
+            logger.debug("Failed to edit models message, sending new message instead: %s", error)
+            if query.message:
+                await query.message.reply_text(
+                    text,
+                    reply_markup=reply_markup,
+                )
 
     async def current_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await self._guard_access(update):

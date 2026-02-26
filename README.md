@@ -68,7 +68,7 @@ ollama-telegram-bot/
 └── pyproject.toml
 ```
 
-## Phase 1 (MVP)
+## Phase 1 (MVP) ✅
 
 - [x] Core bot architecture and environment-based configuration.
 - [x] Docker-first deployment with Compose and GHCR publish workflow.
@@ -82,7 +82,7 @@ ollama-telegram-bot/
 - [x] Healthcheck command and operational status checks.
 - [x] Logging hardening for production observability.
 
-## Phase 2: New features
+## Phase 2 ✅
 
 - [x] Primary inference migration to Ollama Chat API (`/api/chat`).
 - [x] Automatic fallback to `/api/generate` for compatibility and resilience.
@@ -98,6 +98,9 @@ ollama-telegram-bot/
 - [x] Optional cloud-ready Ollama auth configuration (`OLLAMA_API_KEY`, `OLLAMA_AUTH_SCHEME`).
 - [x] Localization support with user Telegram language resolution and English fallback.
 - [x] Locale files available for `en`, `es`, `de`, `fr`, and `it`.
+
+## Phase 3
+
 - [x] `/models` model browser with inline pagination (previous/next) and name filtering via `/models <query>`.
 - [x] `/webmodels` independent browser for Ollama web catalog models available to install, with its own search and pagination.
 
