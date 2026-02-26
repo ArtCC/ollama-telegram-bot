@@ -127,6 +127,11 @@ ollama-telegram-bot/
 - [x] Full observability logging across the image pipeline (task detection, model selection, payload details, raw response preview, fallback reasons).
 - [x] **`/webmodels` download flow**: tapping a model in the web catalog now opens a detail card with two inline buttons — **⬇️ Download** (triggers `ollama pull` via `POST /api/pull` in the background) and **🌐 Web** (opens the Ollama.com library page for that model).
 - [x] Background model download with in-progress guard: duplicate download attempts are rejected with an inline alert, and the result (success or error) is sent as a new chat message on completion.
+- [x] **Rich web model catalog**: `/webmodels` now scrapes `https://ollama.com/search` to extract per-model description, capability badges (👁 vision, 🔧 tools, 💭 thinking, 📊 embedding, ☁️ cloud), available sizes, pull count, tag count and last-updated time.
+- [x] Model detail card shows all structured metadata before the user decides to download.
+- [x] **Size selection keyboard**: when a model has multiple downloadable sizes (e.g. `1b`, `3b`, `70b`) the Download button opens a size picker; single-size or unknown-size models go straight to download.
+- [x] 5-minute in-memory web model list cache to avoid redundant web fetches across rapid interactions.
+- [x] `/webmodels` filter now searches across name, description, capabilities and sizes.
 
 ## Files Context (MVP)
 

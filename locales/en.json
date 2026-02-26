@@ -98,7 +98,8 @@
     "download_started": "⏳ Downloading {model}… this may take several minutes.",
     "download_done": "✅ {model} installed successfully. Use /models to select it.",
     "download_failed": "❌ Failed to download {model}: {error}",
-    "already_downloading": "⏳ {model} is already being downloaded, please wait."
+    "already_downloading": "⏳ {model} is already being downloaded, please wait.",
+    "size_select": "Choose a size to download for {model}:"
   },
   "image": {
     "default_prompt": "Describe this image in detail: identify all visible objects, people, text, signs, colours, and the overall context or scene.",

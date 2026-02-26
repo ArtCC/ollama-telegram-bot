@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.7] - 2026-02-26
+
+- Added **rich web model catalog**: `list_web_models()` now scrapes `https://ollama.com/search` instead of `/library`, extracting per-model structured data — description, capabilities (`vision`, `tools`, `thinking`, `embedding`, `cloud`), available sizes, pull count, tag count, and last-updated time. Introduced `WebModelInfo` dataclass and module-level `_parse_web_models()` helper.
+- Added model detail card in `/webmodels`: tapping a model replaces the list with a rich card showing all metadata before the user acts.
+- Added **size selection keyboard**: when a model exposes multiple sizes the ⬇️ Download button shows a size picker (`1b`, `3b`, `70b` …) rather than always downloading `latest`.
+- Added `WEB_MODEL_SIZE_ACTION` callback handler for size-specific pulls.
+- Added `_fetch_web_models()` helper with a 5-minute in-memory cache to reduce redundant web requests across rapid interactions.
+- Added `_filter_web_models()` helper that searches across name, description, capabilities and sizes — e.g. `/webmodels vision` shows only vision-capable models.
+- Added `_format_web_model_detail()` static helper for building the rich detail card text.
+- Added `web_models.size_select` i18n key (all 5 locales).
+
 ## [0.0.6] - 2026-02-26
 
 ### Added

@@ -98,7 +98,8 @@
     "download_started": "⏳ {model} wird heruntergeladen… das kann mehrere Minuten dauern.",
     "download_done": "✅ {model} erfolgreich installiert. Wähle es mit /models aus.",
     "download_failed": "❌ Fehler beim Herunterladen von {model}: {error}",
-    "already_downloading": "⏳ {model} wird bereits heruntergeladen, bitte warte."
+    "already_downloading": "⏳ {model} wird bereits heruntergeladen, bitte warte.",
+    "size_select": "Wähle eine Größe zum Herunterladen für {model}:"
   },
   "image": {
     "default_prompt": "Beschreibe dieses Bild im Detail: erkenne alle sichtbaren Objekte, Personen, Texte, Schilder, Farben und den allgemeinen Kontext oder die Szene.",

@@ -98,7 +98,8 @@
     "download_started": "⏳ Téléchargement de {model}… cela peut prendre plusieurs minutes.",
     "download_done": "✅ {model} installé avec succès. Utilisez /models pour le sélectionner.",
     "download_failed": "❌ Échec du téléchargement de {model} : {error}",
-    "already_downloading": "⏳ {model} est déjà en cours de téléchargement, veuillez patienter."
+    "already_downloading": "⏳ {model} est déjà en cours de téléchargement, veuillez patienter.",
+    "size_select": "Choisissez une taille à télécharger pour {model} :"
   },
   "image": {
     "default_prompt": "Décrivez cette image en détail : identifiez tous les objets visibles, personnes, textes, panneaux, couleurs et le contexte général ou la scène.",

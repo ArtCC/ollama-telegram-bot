@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
 
@@ -29,6 +29,86 @@ class OllamaConnectionError(OllamaError):
 @dataclass(frozen=True)
 class OllamaResponse:
     text: str
+
+
+@dataclass
+class WebModelInfo:
+    name: str
+    description: str = ""
+    capabilities: list[str] = field(default_factory=list)
+    sizes: list[str] = field(default_factory=list)
+    pulls: str = ""
+    tags_count: str = ""
+    updated: str = ""
+
+
+# ---------------------------------------------------------------------------
+# Web catalog scraping helpers (module-level for testability)
+# ---------------------------------------------------------------------------
+_CARD_RE = re.compile(
+    r'href="/library/([a-zA-Z0-9][a-zA-Z0-9._-]*)"[^>]*>(.*?)(?=href="/library/|\Z)',
+    re.DOTALL,
+)
+_STRIP_TAGS_RE = re.compile(r"<[^>]+>")
+_DESC_RE = re.compile(r"<p[^>]*>(.*?)</p>", re.DOTALL | re.IGNORECASE)
+_SPAN_RE = re.compile(r"<span[^>]*>(.*?)</span>", re.DOTALL | re.IGNORECASE)
+_PULLS_RE = re.compile(r"([\d.]+\s*[KkMmBb]?)\s*Pulls", re.IGNORECASE)
+_TAGS_COUNT_RE = re.compile(r"(\d+)\s*Tag", re.IGNORECASE)
+_UPDATED_RE = re.compile(r"Updated[\s\xa0]+([\w ,]+?)(?=\s*<|\s*Pulls|\s*Tag|\s*$)", re.IGNORECASE)
+_SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?(?:[xX\u00d7]\d+(?:\.\d+)?)?[bBmM])$")
+_KNOWN_CAPS = ("vision", "tools", "thinking", "embedding", "cloud")
+
+
+def _parse_web_models(html: str) -> list[WebModelInfo]:
+    """Parse the Ollama /search page HTML into structured WebModelInfo objects."""
+    models: list[WebModelInfo] = []
+    seen: set[str] = set()
+    for m in _CARD_RE.finditer(html):
+        name = m.group(1).strip()
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        inner = m.group(2)
+
+        # Description from first <p> tag
+        desc_match = _DESC_RE.search(inner)
+        if desc_match:
+            description = _STRIP_TAGS_RE.sub(" ", desc_match.group(1)).strip()
+            description = re.sub(r"\s+", " ", description)
+        else:
+            description = ""
+
+        # Capabilities and sizes from <span> chip elements
+        span_texts = [
+            _STRIP_TAGS_RE.sub("", s).strip().lower() for s in _SPAN_RE.findall(inner)
+        ]
+        capabilities = [cap for cap in _KNOWN_CAPS if cap in span_texts]
+        sizes: list[str] = []
+        for s in span_texts:
+            if _SIZE_RE.match(s) and s not in sizes:
+                sizes.append(s)
+
+        # Pulls, tags count and updated from plain text
+        plain = re.sub(r"\s+", " ", _STRIP_TAGS_RE.sub(" ", inner))
+        pulls_m = _PULLS_RE.search(plain)
+        pulls = pulls_m.group(1).strip() if pulls_m else ""
+        tags_m = _TAGS_COUNT_RE.search(plain)
+        tags_count = tags_m.group(1).strip() if tags_m else ""
+        updated_m = _UPDATED_RE.search(plain)
+        updated = updated_m.group(1).strip() if updated_m else ""
+
+        models.append(
+            WebModelInfo(
+                name=name,
+                description=description,
+                capabilities=capabilities,
+                sizes=sizes,
+                pulls=pulls,
+                tags_count=tags_count,
+                updated=updated,
+            )
+        )
+    return models
 
 
 class OllamaClient:
@@ -158,30 +238,17 @@ class OllamaClient:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
 
-    async def list_web_models(self) -> list[str]:
+    async def list_web_models(self) -> list[WebModelInfo]:
         started_at = monotonic()
         last_error: Exception | None = None
-        library_url = "https://ollama.com/library"
-        pattern = re.compile(r'href="/library/([a-zA-Z0-9][a-zA-Z0-9._:-]*)"')
+        search_url = "https://ollama.com/search"
 
         for attempt in range(self._retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    response = await client.get(library_url)
+                    response = await client.get(search_url)
                 response.raise_for_status()
-
-                matches = pattern.findall(response.text)
-                models: list[str] = []
-                seen: set[str] = set()
-                for item in matches:
-                    name = item.strip()
-                    if not name:
-                        continue
-                    if name in seen:
-                        continue
-                    seen.add(name)
-                    models.append(name)
-
+                models = _parse_web_models(response.text)
                 elapsed_ms = int((monotonic() - started_at) * 1000)
                 logger.info("ollama_list_web_models_ok count=%d elapsed_ms=%d", len(models), elapsed_ms)
                 return models

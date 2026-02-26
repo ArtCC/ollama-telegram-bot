@@ -6,6 +6,7 @@ import io
 import logging
 import re
 from time import monotonic
+from typing import TypeVar
 
 from telegram import (
     BotCommand,
@@ -35,6 +36,7 @@ from src.services.ollama_client import (
     OllamaConnectionError,
     OllamaError,
     OllamaTimeoutError,
+    WebModelInfo,
 )
 from src.services.model_orchestrator import ModelOrchestrator
 from src.utils.telegram import split_message
@@ -54,6 +56,8 @@ WEB_MODEL_PAGE_ACTION_PREFIX = "__page__:"
 WEB_MODEL_CLOSE_ACTION = "__close__"
 WEB_MODEL_DETAIL_ACTION = "__detail__:"
 WEB_MODEL_DOWNLOAD_ACTION = "__download__:"
+WEB_MODEL_SIZE_ACTION = "__size__:"
+_WEB_MODELS_CACHE_TTL = 300.0  # 5 minutes
 FILE_PAGE_ACTION = "page"
 FILE_TOGGLE_ACTION = "toggle"
 FILE_DELETE_ACTION = "delete"
@@ -111,6 +115,8 @@ class BotHandlers:
         self._model_search_query_by_user: dict[int, str] = {}
         self._web_model_search_query_by_user: dict[int, str] = {}
         self._model_downloads_in_progress: set[str] = set()
+        self._web_models_cache: list[WebModelInfo] = []
+        self._web_models_cache_expires: float = 0.0
         self._askfile_target_by_user: dict[int, int] = {}
         self._upload_mode_users: set[int] = set()
 
@@ -226,6 +232,7 @@ class BotHandlers:
             "web_models.download_done",
             "web_models.download_failed",
             "web_models.already_downloading",
+            "web_models.size_select",
             "ui.buttons.download",
             "ui.buttons.open_web",
         )
@@ -374,7 +381,7 @@ class BotHandlers:
         search_query = " ".join(context.args).strip() if context.args else ""
 
         try:
-            models = await self._ollama_client.list_web_models()
+            models = await self._fetch_web_models()
         except OllamaTimeoutError:
             await update.effective_message.reply_text(
                 self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
@@ -403,7 +410,7 @@ class BotHandlers:
             return
 
         self._web_model_search_query_by_user[user_id] = search_query
-        filtered_models = self._filter_models(models, search_query)
+        filtered_models = self._filter_web_models(models, search_query)
         if not filtered_models:
             await update.effective_message.reply_text(
                 self._warning(self._i18n.t("web_models.no_matches", locale=locale)),
@@ -415,12 +422,21 @@ class BotHandlers:
         page_models, total_pages = self._paginate_items(filtered_models, page, WEB_MODELS_PAGE_SIZE)
 
         lines = [self._info(self._i18n.t("web_models.available_title", locale=locale))]
-        for model in page_models:
-            lines.append(f"- {model}")
+        for m in page_models:
+            badges = []
+            if "vision" in m.capabilities:
+                badges.append("👁")
+            if "thinking" in m.capabilities:
+                badges.append("💭")
+            line = f"- {m.name}"
+            if badges:
+                line += "  " + " ".join(badges)
+            if m.sizes:
+                line += "  📦 " + " · ".join(m.sizes[:4])
+            lines.append(line)
         lines.append("")
         lines.append(self._i18n.t("web_models.page_status", locale=locale, page=page, pages=total_pages))
         lines.append(self._i18n.t("web_models.select_with", locale=locale))
-        lines.append(self._i18n.t("web_models.install_hint", locale=locale))
 
         await update.effective_message.reply_text(
             "\n".join(lines),
@@ -929,11 +945,14 @@ class BotHandlers:
             model_name = action.removeprefix(WEB_MODEL_DETAIL_ACTION).strip()
             if not model_name:
                 return
+            try:
+                all_models = await self._fetch_web_models()
+            except (OllamaError, OllamaTimeoutError, OllamaConnectionError):
+                all_models = []
+            info = next((m for m in all_models if m.name == model_name), None)
             await self._edit_models_message(
                 query=query,
-                text=self._info(
-                    self._i18n.t("web_models.detail_title", locale=locale, model=model_name)
-                ),
+                text=self._format_web_model_detail(info, model_name),
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
@@ -961,6 +980,54 @@ class BotHandlers:
             model_name = action.removeprefix(WEB_MODEL_DOWNLOAD_ACTION).strip()
             if not model_name:
                 return
+            # Look up sizes to offer sub-selection
+            try:
+                all_models = await self._fetch_web_models()
+            except (OllamaError, OllamaTimeoutError, OllamaConnectionError):
+                all_models = []
+            info = next((m for m in all_models if m.name == model_name), None)
+            if info and len(info.sizes) > 1:
+                # Show size selection keyboard
+                size_rows: list[list[InlineKeyboardButton]] = []
+                size_row: list[InlineKeyboardButton] = []
+                for size in info.sizes:
+                    full = f"{model_name}:{size}"
+                    size_row.append(
+                        InlineKeyboardButton(
+                            text=size,
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}{full}",
+                        )
+                    )
+                    if len(size_row) == 3:
+                        size_rows.append(size_row)
+                        size_row = []
+                if size_row:
+                    size_rows.append(size_row)
+                size_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=f"{self._i18n.t('ui.buttons.download', locale=locale)} (latest)",
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}{model_name}:latest",
+                        )
+                    ]
+                )
+                size_rows.append(
+                    [
+                        InlineKeyboardButton(
+                            text=self._i18n.t("ui.buttons.close", locale=locale),
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CLOSE_ACTION}",
+                        )
+                    ]
+                )
+                await self._edit_models_message(
+                    query=query,
+                    text=self._info(
+                        self._i18n.t("web_models.size_select", locale=locale, model=model_name)
+                    ),
+                    reply_markup=InlineKeyboardMarkup(size_rows),
+                )
+                return
+            # No size selection needed → download directly
             if model_name in self._model_downloads_in_progress:
                 await query.answer(
                     self._i18n.t(
@@ -986,6 +1053,44 @@ class BotHandlers:
                 self._background_pull_model(
                     chat_id=query.message.chat_id,
                     model_name=model_name,
+                    locale=locale,
+                    context=context,
+                )
+            )
+            return
+
+        if action.startswith(WEB_MODEL_SIZE_ACTION):
+            payload = action.removeprefix(WEB_MODEL_SIZE_ACTION).strip()
+            # payload is "model_name:size_tag" — rpartition to split on last ":"
+            model_name, _, size_tag = payload.rpartition(":")
+            if not model_name or not size_tag:
+                return
+            full_model = f"{model_name}:{size_tag}"
+            if full_model in self._model_downloads_in_progress or model_name in self._model_downloads_in_progress:
+                await query.answer(
+                    self._i18n.t(
+                        "web_models.already_downloading", locale=locale, model=full_model
+                    ),
+                    show_alert=True,
+                )
+                return
+            self._model_downloads_in_progress.add(full_model)
+            try:
+                await self._edit_models_message(
+                    query=query,
+                    text=self._info(
+                        self._i18n.t(
+                            "web_models.download_started", locale=locale, model=full_model
+                        )
+                    ),
+                    reply_markup=InlineKeyboardMarkup([]),
+                )
+            except Exception as edit_error:  # noqa: BLE001
+                logger.debug("Could not edit message for size download start: %s", edit_error)
+            asyncio.create_task(
+                self._background_pull_model(
+                    chat_id=query.message.chat_id,
+                    model_name=full_model,
                     locale=locale,
                     context=context,
                 )
@@ -1246,7 +1351,7 @@ class BotHandlers:
         user_id = update.effective_user.id
 
         try:
-            models = await self._ollama_client.list_web_models()
+            models = await self._fetch_web_models()
         except OllamaTimeoutError:
             await query.message.reply_text(
                 self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
@@ -1268,7 +1373,7 @@ class BotHandlers:
             return
 
         search_query = self._web_model_search_query_by_user.get(user_id, "")
-        filtered_models = self._filter_models(models, search_query)
+        filtered_models = self._filter_web_models(models, search_query)
         if not filtered_models:
             await query.message.reply_text(
                 self._warning(self._i18n.t("web_models.no_matches", locale=locale)),
@@ -1280,12 +1385,21 @@ class BotHandlers:
         safe_page = min(max(page, 1), total_pages)
 
         lines = [self._info(self._i18n.t("web_models.available_title", locale=locale))]
-        for model in page_models:
-            lines.append(f"- {model}")
+        for m in page_models:
+            badges = []
+            if "vision" in m.capabilities:
+                badges.append("👁")
+            if "thinking" in m.capabilities:
+                badges.append("💭")
+            line = f"- {m.name}"
+            if badges:
+                line += "  " + " ".join(badges)
+            if m.sizes:
+                line += "  📦 " + " · ".join(m.sizes[:4])
+            lines.append(line)
         lines.append("")
         lines.append(self._i18n.t("web_models.page_status", locale=locale, page=safe_page, pages=total_pages))
         lines.append(self._i18n.t("web_models.select_with", locale=locale))
-        lines.append(self._i18n.t("web_models.install_hint", locale=locale))
 
         await self._edit_models_message(
             query=query,
@@ -1297,6 +1411,61 @@ class BotHandlers:
                 total_pages=total_pages,
             ),
         )
+
+    async def _fetch_web_models(self) -> list[WebModelInfo]:
+        """Return cached web model list, refreshing if the TTL has expired."""
+        now = monotonic()
+        if self._web_models_cache and now < self._web_models_cache_expires:
+            return self._web_models_cache
+        models = await self._ollama_client.list_web_models()
+        self._web_models_cache = models
+        self._web_models_cache_expires = now + _WEB_MODELS_CACHE_TTL
+        return models
+
+    def _filter_web_models(self, models: list[WebModelInfo], query: str) -> list[WebModelInfo]:
+        search = query.strip().lower()
+        if not search:
+            return models
+        return [
+            m for m in models
+            if search in m.name.lower()
+            or search in m.description.lower()
+            or any(search in cap for cap in m.capabilities)
+            or any(search in size for size in m.sizes)
+        ]
+
+    @staticmethod
+    def _format_web_model_detail(info: WebModelInfo | None, model_name: str) -> str:
+        _CAP_ICONS = {
+            "vision": "\ud83d\udc41",
+            "tools": "\ud83d\udd27",
+            "thinking": "\ud83d\udcad",
+            "embedding": "\ud83d\udcca",
+            "cloud": "\u2601\ufe0f",
+        }
+        if info is None:
+            return f"\u2139\ufe0f {model_name}"
+        lines: list[str] = [f"\u2139\ufe0f {info.name}"]
+        if info.description:
+            lines.append(info.description)
+        lines.append("")
+        if info.capabilities:
+            caps = "  \u00b7  ".join(
+                f"{_CAP_ICONS.get(c, '')} {c}" for c in info.capabilities
+            )
+            lines.append(caps)
+        if info.sizes:
+            lines.append("\ud83d\udce6  " + " \u00b7 ".join(info.sizes))
+        meta: list[str] = []
+        if info.pulls:
+            meta.append(f"\u2b07\ufe0f {info.pulls} pulls")
+        if info.tags_count:
+            meta.append(f"{info.tags_count} tags")
+        if meta:
+            lines.append("  \u00b7  ".join(meta))
+        if info.updated:
+            lines.append(f"\ud83d\udd50 Updated {info.updated}")
+        return "\n".join(lines)
 
     async def _show_models_page(self, update: Update, page: int) -> None:
         query = update.callback_query
@@ -2717,18 +2886,23 @@ class BotHandlers:
     def _web_models_inline_keyboard(
         self,
         locale: str,
-        models: list[str],
+        models: list[WebModelInfo],
         page: int,
         total_pages: int,
     ) -> InlineKeyboardMarkup:
         rows: list[list[InlineKeyboardButton]] = []
         row: list[InlineKeyboardButton] = []
 
-        for model in models:
+        for m in models:
+            label = m.name
+            if "vision" in m.capabilities:
+                label = f"\ud83d\udc41 {label}"
+            elif "thinking" in m.capabilities:
+                label = f"\ud83d\udcad {label}"
             row.append(
                 InlineKeyboardButton(
-                    text=model,
-                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DETAIL_ACTION}{model}",
+                    text=label,
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DETAIL_ACTION}{m.name}",
                 )
             )
             if len(row) == 2:
