@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import logging
 import re
@@ -125,6 +126,8 @@ class BotHandlers:
         self._model_downloads_in_progress: set[str] = set()
         self._download_cancel_events: dict[str, asyncio.Event] = {}
         self._web_model_search_mode_users: set[int] = set()
+        self._web_model_token_to_name: dict[str, str] = {}
+        self._web_model_name_to_token: dict[str, str] = {}
         self._web_models_cache: list[WebModelInfo] = []
         self._web_models_cache_expires: float = 0.0
         self._askfile_target_by_user: dict[int, int] = {}
@@ -993,14 +996,16 @@ class BotHandlers:
             return
 
         if action.startswith(WEB_MODEL_CANCEL_ACTION):
-            model_name = action.removeprefix(WEB_MODEL_CANCEL_ACTION).strip()
+            callback_model = action.removeprefix(WEB_MODEL_CANCEL_ACTION).strip()
+            model_name = self._resolve_web_model_callback_value(callback_model)
             cancel_ev = self._download_cancel_events.get(model_name)
             if cancel_ev:
                 cancel_ev.set()
             return
 
         if action.startswith(WEB_MODEL_DETAIL_ACTION):
-            model_name = action.removeprefix(WEB_MODEL_DETAIL_ACTION).strip()
+            callback_model = action.removeprefix(WEB_MODEL_DETAIL_ACTION).strip()
+            model_name = self._resolve_web_model_callback_value(callback_model)
             if not model_name:
                 return
             try:
@@ -1016,7 +1021,10 @@ class BotHandlers:
                         [
                             InlineKeyboardButton(
                                 text=self._i18n.t("ui.buttons.download", locale=locale),
-                                callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DOWNLOAD_ACTION}{model_name}",
+                                callback_data=(
+                                    f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DOWNLOAD_ACTION}"
+                                    f"{self._web_model_token(model_name)}"
+                                ),
                             ),
                             InlineKeyboardButton(
                                 text=self._i18n.t("ui.buttons.open_web", locale=locale),
@@ -1035,7 +1043,8 @@ class BotHandlers:
             return
 
         if action.startswith(WEB_MODEL_DOWNLOAD_ACTION):
-            model_name = action.removeprefix(WEB_MODEL_DOWNLOAD_ACTION).strip()
+            callback_model = action.removeprefix(WEB_MODEL_DOWNLOAD_ACTION).strip()
+            model_name = self._resolve_web_model_callback_value(callback_model)
             if not model_name:
                 return
             # Look up sizes to offer sub-selection
@@ -1050,10 +1059,11 @@ class BotHandlers:
                 size_row: list[InlineKeyboardButton] = []
                 for size in info.sizes:
                     full = f"{model_name}:{size}"
+                    callback_payload = f"{self._web_model_token(model_name)}:{size}"
                     size_row.append(
                         InlineKeyboardButton(
                             text=size,
-                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}{full}",
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}{callback_payload}",
                         )
                     )
                     if len(size_row) == 3:
@@ -1065,7 +1075,10 @@ class BotHandlers:
                     [
                         InlineKeyboardButton(
                             text=f"{self._i18n.t('ui.buttons.download', locale=locale)} (latest)",
-                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}{model_name}:latest",
+                            callback_data=(
+                                f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_SIZE_ACTION}"
+                                f"{self._web_model_token(model_name)}:latest"
+                            ),
                         )
                     ]
                 )
@@ -1097,12 +1110,13 @@ class BotHandlers:
             self._model_downloads_in_progress.add(model_name)
             cancel_event = asyncio.Event()
             self._download_cancel_events[model_name] = cancel_event
+            callback_model = self._web_model_token(model_name)
             cancel_kb = InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton(
                             text=self._i18n.t("ui.buttons.cancel", locale=locale),
-                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{model_name}",
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{callback_model}",
                         )
                     ]
                 ]
@@ -1133,8 +1147,9 @@ class BotHandlers:
 
         if action.startswith(WEB_MODEL_SIZE_ACTION):
             payload = action.removeprefix(WEB_MODEL_SIZE_ACTION).strip()
-            # payload is "model_name:size_tag" — rpartition to split on last ":"
-            model_name, _, size_tag = payload.rpartition(":")
+            # payload is "model_token:size_tag" — rpartition to split on last ":"
+            callback_model, _, size_tag = payload.rpartition(":")
+            model_name = self._resolve_web_model_callback_value(callback_model)
             if not model_name or not size_tag:
                 return
             full_model = f"{model_name}:{size_tag}"
@@ -1149,12 +1164,13 @@ class BotHandlers:
             self._model_downloads_in_progress.add(full_model)
             cancel_event = asyncio.Event()
             self._download_cancel_events[full_model] = cancel_event
+            callback_model = self._web_model_token(full_model)
             cancel_kb = InlineKeyboardMarkup(
                 [
                     [
                         InlineKeyboardButton(
                             text=self._i18n.t("ui.buttons.cancel", locale=locale),
-                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{full_model}",
+                            callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{callback_model}",
                         )
                     ]
                 ]
@@ -1193,12 +1209,13 @@ class BotHandlers:
         context: ContextTypes.DEFAULT_TYPE,
         cancel_event: asyncio.Event,
     ) -> None:
+        callback_model = self._web_model_token(model_name)
         cancel_kb = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         text=self._i18n.t("ui.buttons.cancel", locale=locale),
-                        callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{model_name}",
+                        callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_CANCEL_ACTION}{callback_model}",
                     )
                 ]
             ]
@@ -1939,7 +1956,30 @@ class BotHandlers:
         models = await self._ollama_client.list_web_models()
         self._web_models_cache = models
         self._web_models_cache_expires = now + _WEB_MODELS_CACHE_TTL
+        for model in models:
+            self._web_model_token(model.name)
         return models
+
+    def _web_model_token(self, model_name: str) -> str:
+        existing = self._web_model_name_to_token.get(model_name)
+        if existing:
+            return existing
+
+        digest = hashlib.sha1(model_name.encode("utf-8")).hexdigest()
+        token_len = 10
+        token = digest[:token_len]
+        while self._web_model_token_to_name.get(token, model_name) != model_name:
+            token_len += 1
+            token = digest[:token_len]
+
+        self._web_model_name_to_token[model_name] = token
+        self._web_model_token_to_name[token] = model_name
+        return token
+
+    def _resolve_web_model_callback_value(self, value: str) -> str:
+        if not value:
+            return ""
+        return self._web_model_token_to_name.get(value, value)
 
     def _filter_web_models(self, models: list[WebModelInfo], query: str) -> list[WebModelInfo]:
         search = query.strip().lower()
@@ -1956,10 +1996,10 @@ class BotHandlers:
     @staticmethod
     def _format_web_model_detail(info: WebModelInfo | None, model_name: str) -> str:
         _CAP_ICONS = {
-            "vision": "\ud83d\udc41",
-            "tools": "\ud83d\udd27",
-            "thinking": "\ud83d\udcad",
-            "embedding": "\ud83d\udcca",
+            "vision": "\U0001F441",
+            "tools": "\U0001F527",
+            "thinking": "\U0001F4AD",
+            "embedding": "\U0001F4CA",
             "cloud": "\u2601\ufe0f",
         }
         if info is None:
@@ -1974,7 +2014,7 @@ class BotHandlers:
             )
             lines.append(caps)
         if info.sizes:
-            lines.append("\ud83d\udce6  " + " \u00b7 ".join(info.sizes))
+            lines.append("\U0001F4E6  " + " \u00b7 ".join(info.sizes))
         meta: list[str] = []
         if info.pulls:
             meta.append(f"\u2b07\ufe0f {info.pulls} pulls")
@@ -1983,7 +2023,7 @@ class BotHandlers:
         if meta:
             lines.append("  \u00b7  ".join(meta))
         if info.updated:
-            lines.append(f"\ud83d\udd50 Updated {info.updated}")
+            lines.append(f"\U0001F550 Updated {info.updated}")
         return "\n".join(lines)
 
     async def _show_models_page(self, update: Update, page: int) -> None:
@@ -3422,13 +3462,14 @@ class BotHandlers:
         for m in models:
             label = m.name
             if "vision" in m.capabilities:
-                label = f"\ud83d\udc41 {label}"
+                label = f"\U0001F441 {label}"
             elif "thinking" in m.capabilities:
-                label = f"\ud83d\udcad {label}"
+                label = f"\U0001F4AD {label}"
+            token = self._web_model_token(m.name)
             row.append(
                 InlineKeyboardButton(
                     text=label,
-                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DETAIL_ACTION}{m.name}",
+                    callback_data=f"{WEB_MODEL_CALLBACK_PREFIX}{WEB_MODEL_DETAIL_ACTION}{token}",
                 )
             )
             if len(row) == 2:
