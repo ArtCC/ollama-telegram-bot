@@ -976,7 +976,7 @@ class BotHandlers:
 
         if action == WEB_MODEL_REFRESH_ACTION:
             self._web_model_search_query_by_user[update.effective_user.id] = ""
-            await self._show_web_models_page(update, 1)
+            await self._show_web_models_page(update, 1, force_refresh=True)
             return
 
         if action == WEB_MODEL_CLOSE_ACTION:
@@ -1808,7 +1808,7 @@ class BotHandlers:
             ),
         )
 
-    async def _show_web_models_page(self, update: Update, page: int) -> None:
+    async def _show_web_models_page(self, update: Update, page: int, force_refresh: bool = False) -> None:
         query = update.callback_query
         if not query or not update.effective_user or not query.message:
             return
@@ -1817,7 +1817,7 @@ class BotHandlers:
         user_id = update.effective_user.id
 
         try:
-            models = await self._fetch_web_models()
+            models = await self._fetch_web_models(force_refresh=force_refresh)
         except OllamaTimeoutError:
             await query.message.reply_text(
                 self._warning(self._i18n.t("errors.ollama_timeout", locale=locale)),
@@ -1948,10 +1948,10 @@ class BotHandlers:
             ),
         )
 
-    async def _fetch_web_models(self) -> list[WebModelInfo]:
+    async def _fetch_web_models(self, force_refresh: bool = False) -> list[WebModelInfo]:
         """Return cached web model list, refreshing if the TTL has expired."""
         now = monotonic()
-        if self._web_models_cache and now < self._web_models_cache_expires:
+        if not force_refresh and self._web_models_cache and now < self._web_models_cache_expires:
             return self._web_models_cache
         models = await self._ollama_client.list_web_models()
         self._web_models_cache = models

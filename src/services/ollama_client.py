@@ -59,6 +59,7 @@ _TAGS_COUNT_RE = re.compile(r"(\d+)\s*Tag", re.IGNORECASE)
 _UPDATED_RE = re.compile(r"Updated[\s\xa0]+([\w ,]+?)(?=\s*<|\s*Pulls|\s*Tag|\s*$)", re.IGNORECASE)
 _SIZE_RE = re.compile(r"^(\d+(?:\.\d+)?(?:[xX\u00d7]\d+(?:\.\d+)?)?[bBmM])$")
 _KNOWN_CAPS = ("vision", "tools", "thinking", "embedding", "cloud")
+_SEARCH_NEXT_PAGE_HREF_RE = re.compile(r'href="/search\?page=(\d+)"', re.IGNORECASE)
 
 
 def _parse_web_models(html: str) -> list[WebModelInfo]:
@@ -247,25 +248,61 @@ class OllamaClient:
 
     async def list_web_models(self) -> list[WebModelInfo]:
         started_at = monotonic()
-        last_error: Exception | None = None
         search_url = "https://ollama.com/search"
+        max_pages = 100
+        all_models: list[WebModelInfo] = []
+        seen_names: set[str] = set()
 
+        page = 1
+        while page <= max_pages:
+            page_url = search_url if page == 1 else f"{search_url}?page={page}"
+            page_html = await self._fetch_web_models_page_html(page_url)
+            page_models = _parse_web_models(page_html)
+
+            for model in page_models:
+                if model.name in seen_names:
+                    continue
+                seen_names.add(model.name)
+                all_models.append(model)
+
+            if not page_models:
+                break
+
+            next_pages = [
+                int(match.group(1))
+                for match in _SEARCH_NEXT_PAGE_HREF_RE.finditer(page_html)
+                if match.group(1).isdigit()
+            ]
+            if (page + 1) not in next_pages:
+                break
+
+            page += 1
+
+        elapsed_ms = int((monotonic() - started_at) * 1000)
+        logger.info(
+            "ollama_list_web_models_ok count=%d pages=%d elapsed_ms=%d",
+            len(all_models),
+            page,
+            elapsed_ms,
+        )
+        return all_models
+
+    async def _fetch_web_models_page_html(self, url: str) -> str:
+        last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
                 async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    response = await client.get(search_url)
+                    response = await client.get(url)
                 response.raise_for_status()
-                models = _parse_web_models(response.text)
-                elapsed_ms = int((monotonic() - started_at) * 1000)
-                logger.info("ollama_list_web_models_ok count=%d elapsed_ms=%d", len(models), elapsed_ms)
-                return models
+                return response.text
             except httpx.TimeoutException as error:
                 last_error = error
                 if attempt < self._retries:
                     logger.warning(
-                        "ollama_list_web_models_timeout_retry attempt=%d/%d",
+                        "ollama_list_web_models_timeout_retry attempt=%d/%d url=%s",
                         attempt + 1,
                         self._retries + 1,
+                        url,
                     )
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
@@ -274,16 +311,17 @@ class OllamaClient:
                 last_error = error
                 if attempt < self._retries:
                     logger.warning(
-                        "ollama_list_web_models_connection_retry attempt=%d/%d",
+                        "ollama_list_web_models_connection_retry attempt=%d/%d url=%s",
                         attempt + 1,
                         self._retries + 1,
+                        url,
                     )
                     await asyncio.sleep(0.5 * (2**attempt))
                     continue
                 raise OllamaConnectionError("Could not reach Ollama web catalog") from error
             except httpx.HTTPStatusError as error:
                 detail = error.response.text[:300]
-                logger.warning("ollama_list_web_models_http_error status=%d", error.response.status_code)
+                logger.warning("ollama_list_web_models_http_error status=%d url=%s", error.response.status_code, url)
                 raise OllamaError(
                     f"Ollama web catalog returned HTTP {error.response.status_code}: {detail}"
                 ) from error
