@@ -126,6 +126,7 @@ class BotHandlers:
         self._model_downloads_in_progress: set[str] = set()
         self._download_cancel_events: dict[str, asyncio.Event] = {}
         self._web_model_search_mode_users: set[int] = set()
+        self._web_search_mode_users: set[int] = set()
         self._web_model_token_to_name: dict[str, str] = {}
         self._web_model_name_to_token: dict[str, str] = {}
         self._web_models_cache: list[WebModelInfo] = []
@@ -148,6 +149,7 @@ class BotHandlers:
             "commands.currentmodel",
             "ui.buttons.models",
             "ui.buttons.web_models",
+            "ui.buttons.web_search",
             "ui.buttons.files",
             "ui.buttons.current_model",
             "ui.buttons.clear",
@@ -266,6 +268,7 @@ class BotHandlers:
             "web_search.header",
             "web_search.sources_header",
             "web_search.usage",
+            "web_search.search_prompt",
         )
 
     async def set_commands(self, application: Application) -> None:
@@ -701,8 +704,10 @@ class BotHandlers:
         self._upload_mode_users.discard(user_id)
         was_web_search_mode = user_id in self._web_model_search_mode_users
         self._web_model_search_mode_users.discard(user_id)
+        was_web_query_mode = user_id in self._web_search_mode_users
+        self._web_search_mode_users.discard(user_id)
         pending = self._askfile_target_by_user.pop(user_id, None)
-        if pending is not None or was_upload or was_web_search_mode:
+        if pending is not None or was_upload or was_web_search_mode or was_web_query_mode:
             await update.effective_message.reply_text(
                 self._i18n.t("messages.cancel_ask_done", locale=locale),
                 reply_markup=self._main_keyboard(locale),
@@ -1548,9 +1553,21 @@ class BotHandlers:
         if len(context_block) > WEBSEARCH_CONTEXT_MAX_CHARS:
             context_block = context_block[:WEBSEARCH_CONTEXT_MAX_CHARS] + "…"
 
-        enriched_prompt = f"{context_block}\n\n---\n{query_str}"
+        grounding_rules = (
+            "INSTRUCCIONES IMPORTANTES:\n"
+            "- Responde SOLO con la información de los resultados web proporcionados arriba.\n"
+            "- Si la información no contiene el dato exacto solicitado (por ejemplo hora/temperatura actual), dilo explícitamente.\n"
+            "- No inventes fechas, cifras ni hechos.\n"
+            "- Resume de forma breve y cita las fuentes por índice [1], [2], etc."
+        )
+        enriched_prompt = (
+            f"{context_block}\n\n"
+            f"{grounding_rules}\n\n"
+            f"Pregunta del usuario: {query_str}"
+        )
 
-        turns = self._context_store.get_turns(user_id)
+        # /websearch should be grounded on fresh web results and avoid drift from prior chat context.
+        turns: list[ConversationTurn] = []
         model = self._get_user_model(user_id)
         system_instruction = self._agent_system_instruction("chat", locale)
 
@@ -2152,6 +2169,17 @@ class BotHandlers:
         if action == "web_models":
             await self.web_models(update, context)
             return
+        if action == "web_search":
+            if not update.effective_message or not update.effective_user:
+                return
+            locale = self._locale(update)
+            user_id = update.effective_user.id
+            self._web_search_mode_users.add(user_id)
+            await update.effective_message.reply_text(
+                self._i18n.t("web_search.search_prompt", locale=locale),
+                reply_markup=self._main_keyboard(locale),
+            )
+            return
         if action == "files":
             await self.files(update, context)
             return
@@ -2215,6 +2243,25 @@ class BotHandlers:
             self._web_model_search_mode_users.discard(user_id)
             self._web_model_search_query_by_user[user_id] = user_text
             await self._reply_web_models_page(update, 1)
+            return
+
+        # Web search mode: next text message is a query for /websearch
+        if user_id in self._web_search_mode_users:
+            self._web_search_mode_users.discard(user_id)
+            if user_text.strip().lower() in {
+                "cancel",
+                "cancelar",
+                "annulla",
+                "annuler",
+                "abbrechen",
+            }:
+                await update.effective_message.reply_text(
+                    self._i18n.t("messages.cancel_ask_done", locale=locale),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+            context.args = user_text.split()
+            await self.web_search_cmd(update, context)
             return
 
         turns = self._context_store.get_turns(user_id)
@@ -3178,6 +3225,7 @@ class BotHandlers:
         quick_action_keys = {
             "models": "ui.buttons.models",
             "web_models": "ui.buttons.web_models",
+            "web_search": "ui.buttons.web_search",
             "files": "ui.buttons.files",
             "current_model": "ui.buttons.current_model",
             "clear": "ui.buttons.clear",
@@ -3525,6 +3573,7 @@ class BotHandlers:
                     KeyboardButton(self._i18n.t("ui.buttons.web_models", locale=locale)),
                 ],
                 [
+                    KeyboardButton(self._i18n.t("ui.buttons.web_search", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.files", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
                 ],

@@ -18,6 +18,7 @@
     "buttons": {
       "models": "🧠 Modelli",
       "web_models": "🌐 Modelli web",
+      "web_search": "🔎 Ricerca web",
       "files": "📁 File",
       "current_model": "📌 Modello attuale",
       "clear": "🧹 Cancella contesto",
@@ -141,6 +142,7 @@
   },
   "web_search": {
     "usage": "Uso: /websearch <ricerca>",
+    "search_prompt": "Invia la tua query per la ricerca web:",
     "no_api_key": "⚠️ La ricerca web non è configurata. Chiedi all'admin di impostare OLLAMA_API_KEY.",
     "searching": "🔍 Ricerca sul web: <i>{query}</i>",
     "no_results": "Nessun risultato web per: <i>{query}</i>",

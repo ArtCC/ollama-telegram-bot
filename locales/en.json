@@ -18,6 +18,7 @@
     "buttons": {
       "models": "🧠 Models",
       "web_models": "🌐 Web Models",
+      "web_search": "🔎 Web Search",
       "files": "📁 Files",
       "current_model": "📌 Current Model",
       "clear": "🧹 Clear Context",
@@ -141,6 +142,7 @@
   },
   "web_search": {
     "usage": "Usage: /websearch <query>",
+    "search_prompt": "Send your query to search the web:",
     "no_api_key": "⚠️ Web search is not configured. Ask the bot admin to set OLLAMA_API_KEY.",
     "searching": "🔍 Searching the web for: <i>{query}</i>",
     "no_results": "No web results found for: <i>{query}</i>",
