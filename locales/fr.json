@@ -43,8 +43,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>Bienvenue !</b> Envoyez un message et je demanderai une réponse à Ollama.\nUtilisez les boutons ci-dessous ou les commandes slash.",
-    "help": "ℹ️ Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l’exécution, la base de données et l’état d’Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l’installation\n/files - Gérer vos documents et images enregistrés\n/askfile - Poser une question sur un fichier précis : /askfile <id> <question>\n/currentmodel - Afficher votre modèle actif\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).",
-    "askfile_prompt": "Envoyez maintenant votre question pour le fichier #{id} ({name}).",
+    "help": "Commandes disponibles :\n/start - Démarrer le bot\n/help - Afficher cette aide\n/health - Vérifier l'exécution, la base de données et l'état d'Ollama\n/clear - Effacer votre contexte\n/models - Lister les modèles locaux ou en sélectionner un avec /models <name>\n/webmodels - Parcourir les modèles web disponibles à l'installation\n/files - Gérer vos documents et images enregistrés\n/askfile - Poser une question sur un fichier précis : /askfile <id> <question>\n/currentmodel - Afficher votre modèle actif\n/deletemodel - Supprimer un modèle local\n/info - Afficher les détails du modèle\n/websearch - Rechercher sur le web\n\nVous pouvez envoyer des messages texte ou des images (avec des instructions facultatives en légende).""askfile_prompt": "Envoyez maintenant votre question pour le fichier #{id} ({name}).",
     "askfile_usage": "Utilisation : /askfile <id_fichier> <question>. Exemple : /askfile 12 Résume ce fichier.",
     "cancel_ask_done": "Mode question annulé. Vous pouvez continuer normalement.",
     "cancel_nothing": "Il n'y a rien à annuler pour l'instant.",
@@ -95,6 +94,8 @@
     "instructions": "Utilisez ✅/☑️ pour sélectionner ou désélectionner les fichiers pour le contexte, 🗑 pour supprimer.",
     "deleted": "Fichier supprimé.",
     "not_found": "Fichier introuvable ou déjà supprimé.",
+    "delete_confirm": "Supprimer le fichier <b>#{id}</b> ({name}) ? Cette action est irréversible.",
+    "delete_cancelled": "Suppression du fichier annulée.",
     "upload_prompt": "Mode envoi actif. Envoie une image pour la sauvegarder sans analyse.",
     "upload_done": "✅ Fichier #{id} enregistré : {name}. Utilisez /askfile {id} pour l'analyser."
   },
@@ -134,10 +135,10 @@
     "ollama_connection": "Je n’ai pas pu me connecter à Ollama. Veuillez contacter l’administrateur du bot.",
     "ollama_list_models": "Je n’ai pas pu charger les modèles depuis Ollama pour le moment. Veuillez réessayer plus tard.",
     "ollama_list_web_models": "Je n’ai pas pu charger les modèles web pour le moment. Veuillez réessayer plus tard.",
-    "ollama_validate_model": "Je n’ai pas pu valider le modèle sélectionné pour le moment. Veuillez réessayer plus tard.",
+    "ollama_validate_model": "Je n'ai pas pu valider le modèle sélectionné. Réessayez ou utilisez /models pour en choisir un autre.",
     "save_model_preference": "Je n’ai pas pu enregistrer votre préférence de modèle. Veuillez réessayer plus tard.",
     "save_default_model_preference": "Je n’ai pas pu enregistrer votre préférence de modèle par défaut. Veuillez réessayer plus tard.",
-    "files_storage": "Je n’ai pas pu mettre à jour vos fichiers enregistrés pour le moment. Veuillez réessayer plus tard.",
+    "files_storage": "Je n'ai pas pu mettre à jour vos fichiers. Réessayez ou vérifiez /files.",
     "ollama_generic": "Ollama a renvoyé une erreur. Veuillez réessayer dans quelques instants."
   },
   "web_search": {

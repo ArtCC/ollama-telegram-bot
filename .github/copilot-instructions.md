@@ -25,7 +25,8 @@ The user should always know:
 
 3) Persistent keyboard for global navigation
 - Use ReplyKeyboardMarkup for always-available actions.
-- Keep it compact: 2 to 4 main buttons.
+- Keep it compact: 4 main buttons in a 2×2 grid.
+- Current buttons: 🧠 Models, 📁 Files, 🔎 Web Search, ❓ Help.
 - Avoid clutter and avoid low-value buttons.
 - Re-show the keyboard after important actions.
 
@@ -90,6 +91,25 @@ Example:
 ### D) Confirmation copy
 - Confirmation prompts must explicitly mention the target resource.
 - Avoid generic prompts like "Are you sure?" without context.
+
+### E) Command-only features (no persistent keyboard button)
+The following commands do not have a persistent keyboard button by design:
+- `/start` — One-time onboarding, not a repeated action.
+- `/health` — Admin/diagnostic, low frequency.
+- `/clear` — Available via `/clear`; low frequency, avoids accidental taps.
+- `/webmodels` — Available via `/webmodels`; less frequent than local models.
+- `/currentmodel` — Informational; available via `/currentmodel`.
+- `/askfile` — Contextual; accessed via inline 💬 Ask button on the files list.
+- `/cancel` — Situational; only cancels special modes.
+- `/deletemodel` — Destructive; deliberately not surfaced in the main keyboard.
+- `/info` — Informational; low frequency.
+
+### F) Streaming response pattern
+- The bot sends a placeholder message (⏳) immediately.
+- The placeholder is edited with accumulated text every ~1 second.
+- Intermediate edits use plain text (no ParseMode) to avoid broken HTML tags.
+- The final edit uses ParseMode.HTML for proper formatting.
+- If the response exceeds Telegram's 4096-char limit, remaining text is sent as follow-up messages.
 
 ## UX/UI Acceptance Checklist
 

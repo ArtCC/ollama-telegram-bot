@@ -43,7 +43,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>Welcome!</b> Send a message and I will ask Ollama for a response.\nUse the buttons below or slash commands.",
-    "help": "ℹ️ Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/askfile - Ask using one specific file: /askfile <id> <question>\n/currentmodel - Show your active model\n\nYou can send text messages or images (with optional caption instructions).",
+    "help": "Available commands:\n/start - Start the bot\n/help - Show this help\n/health - Check runtime, database and Ollama status\n/clear - Clear your context\n/models - List local models or select one with /models <name>\n/webmodels - Browse web models available to install\n/files - Manage your saved documents and images\n/askfile - Ask using one specific file: /askfile <id> <question>\n/currentmodel - Show your active model\n/deletemodel - Delete a local model\n/info - Show model details\n/websearch - Search the web\n\nYou can send text messages or images (with optional caption instructions).",
     "askfile_prompt": "Now send your question for file #{id} ({name}).",
     "askfile_usage": "Usage: /askfile <file_id> <question>. Example: /askfile 12 Summarize this file.",
     "cancel_ask_done": "Ask mode cancelled. You can continue normally.",
@@ -95,6 +95,8 @@
     "instructions": "Use ✅/☑️ to select or deselect files for context, 🗑 to delete.",
     "deleted": "File deleted.",
     "not_found": "File not found or already removed.",
+    "delete_confirm": "Delete file <b>#{id}</b> ({name})? This cannot be undone.",
+    "delete_cancelled": "File deletion cancelled.",
     "upload_prompt": "Upload mode active. Send any image to save it to your files without model analysis.",
     "upload_done": "✅ File #{id} saved: {name}. Use /askfile {id} to analyze it."
   },
@@ -134,10 +136,10 @@
     "ollama_connection": "I could not connect to Ollama. Please contact the bot administrator.",
     "ollama_list_models": "I could not load models from Ollama right now. Please try again later.",
     "ollama_list_web_models": "I could not load web models right now. Please try again later.",
-    "ollama_validate_model": "I could not validate the selected model right now. Please try again later.",
+    "ollama_validate_model": "I could not validate the selected model. Try again or use /models to choose another.",
     "save_model_preference": "I could not save your model preference. Please try again later.",
     "save_default_model_preference": "I could not save your default model preference. Please try again later.",
-    "files_storage": "I could not update your saved files right now. Please try again later.",
+    "files_storage": "I could not update your files right now. Try again or check /files.",
     "ollama_generic": "Ollama returned an error. Please try again in a few moments."
   },
   "web_search": {

@@ -68,6 +68,8 @@ _WEB_MODELS_CACHE_TTL = 300.0  # 5 minutes
 FILE_PAGE_ACTION = "page"
 FILE_TOGGLE_ACTION = "toggle"
 FILE_DELETE_ACTION = "delete"
+FILE_CONFIRM_DELETE_ACTION = "confirmdelete"
+FILE_CANCEL_DELETE_ACTION = "canceldelete"
 FILE_ASK_ACTION = "ask"
 FILE_CLOSE_ACTION = "close"
 FILE_UPLOAD_ACTION = "upload"
@@ -207,6 +209,8 @@ class BotHandlers:
             "files.instructions",
             "files.deleted",
             "files.not_found",
+            "files.delete_confirm",
+            "files.delete_cancelled",
             "web_models.available_title",
             "web_models.select_with",
             "web_models.install_hint",
@@ -330,7 +334,7 @@ class BotHandlers:
         locale = self._locale(update)
         self._log_user_event("command_help", update)
         await update.effective_message.reply_text(
-            self._i18n.t("messages.help", locale=locale),
+            self._info(self._i18n.t("messages.help", locale=locale)),
             reply_markup=self._main_keyboard(locale),
         )
 
@@ -867,6 +871,7 @@ class BotHandlers:
 
         if selected_model == MODEL_REFRESH_ACTION:
             self._model_search_query_by_user[update.effective_user.id] = ""
+            await update.effective_chat.send_action(action=ChatAction.TYPING)
             await self._show_models_page(update, 1)
             return
 
@@ -1669,13 +1674,35 @@ class BotHandlers:
                         return
                     self._user_assets_store.set_selected(user_id, asset_id, not asset.is_selected)
                 else:
-                    deleted = self._user_assets_store.delete_asset(user_id, asset_id)
-                    if not deleted:
-                        await query.message.reply_text(
-                            self._warning(self._i18n.t("files.not_found", locale=locale)),
-                            reply_markup=self._main_keyboard(locale),
-                        )
-                        return
+                    # Show confirmation prompt instead of deleting immediately
+                    asset = self._user_assets_store.get_asset(user_id, asset_id)
+                    asset_name = asset.asset_name if asset else f"#{asset_id}"
+                    await query.message.reply_text(
+                        self._warning(
+                            self._i18n.t(
+                                "files.delete_confirm",
+                                locale=locale,
+                                id=asset_id,
+                                name=asset_name,
+                            )
+                        ),
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=InlineKeyboardMarkup(
+                            [
+                                [
+                                    InlineKeyboardButton(
+                                        text=self._i18n.t("ui.buttons.confirm", locale=locale),
+                                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CONFIRM_DELETE_ACTION}:{asset_id}:{page}",
+                                    ),
+                                    InlineKeyboardButton(
+                                        text=self._i18n.t("ui.buttons.cancel", locale=locale),
+                                        callback_data=f"{FILE_CALLBACK_PREFIX}{FILE_CANCEL_DELETE_ACTION}:{page}",
+                                    ),
+                                ]
+                            ]
+                        ),
+                    )
+                    return
             except Exception as error:
                 logger.exception("Failed to update file action=%s asset_id=%s error=%s", action, asset_id, error)
                 await query.message.reply_text(
@@ -1685,6 +1712,40 @@ class BotHandlers:
                 return
 
             await self._show_files_page(update=update, page=page)
+            return
+
+        if action == FILE_CONFIRM_DELETE_ACTION and len(parts) >= 3:
+            asset_id_raw, page_raw = parts[1], parts[2]
+            if not asset_id_raw.isdigit() or not page_raw.isdigit():
+                return
+            asset_id = int(asset_id_raw)
+            page = int(page_raw)
+            try:
+                deleted = self._user_assets_store.delete_asset(user_id, asset_id)
+                if not deleted:
+                    await query.message.reply_text(
+                        self._warning(self._i18n.t("files.not_found", locale=locale)),
+                        reply_markup=self._main_keyboard(locale),
+                    )
+                    return
+            except Exception as error:
+                logger.exception("Failed to delete file asset_id=%s error=%s", asset_id, error)
+                await query.message.reply_text(
+                    self._error(self._i18n.t("errors.files_storage", locale=locale)),
+                    reply_markup=self._main_keyboard(locale),
+                )
+                return
+            await self._show_files_page(update=update, page=page)
+            return
+
+        if action == FILE_CANCEL_DELETE_ACTION and len(parts) >= 2:
+            page_raw = parts[1]
+            if not page_raw.isdigit():
+                return
+            await query.message.reply_text(
+                self._info(self._i18n.t("files.delete_cancelled", locale=locale)),
+                reply_markup=self._main_keyboard(locale),
+            )
             return
 
         if action == FILE_ASK_ACTION and len(parts) >= 2:
@@ -2137,20 +2198,7 @@ class BotHandlers:
         current_model = self._get_user_model(user_id)
         await update.effective_message.reply_text(
             self._info(self._i18n.t("messages.current_model", locale=locale, model=current_model)),
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            text=self._i18n.t("ui.buttons.open_models", locale=locale),
-                            callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_REFRESH_ACTION}",
-                        ),
-                        InlineKeyboardButton(
-                            text=self._i18n.t("ui.buttons.use_default", locale=locale),
-                            callback_data=f"{MODEL_CALLBACK_PREFIX}{MODEL_DEFAULT_ACTION}",
-                        ),
-                    ]
-                ]
-            ),
+            reply_markup=self._main_keyboard(locale),
         )
 
     async def quick_actions(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2163,9 +2211,6 @@ class BotHandlers:
         action = self._quick_action_map.get(text)
         if action == "models":
             await self.models(update, context)
-            return
-        if action == "web_models":
-            await self.web_models(update, context)
             return
         if action == "web_search":
             if not update.effective_message or not update.effective_user:
@@ -2180,12 +2225,6 @@ class BotHandlers:
             return
         if action == "files":
             await self.files(update, context)
-            return
-        if action == "current_model":
-            await self.current_model(update, context)
-            return
-        if action == "clear":
-            await self.clear(update, context)
             return
         if action == "help":
             await self.help(update, context)
@@ -2267,6 +2306,8 @@ class BotHandlers:
         started_at = monotonic()
         agent_name = self._select_agent(user_text)
         system_instruction = self._agent_system_instruction(agent_name, locale)
+
+        await update.effective_chat.send_action(action=ChatAction.TYPING)
 
         # Retrieve selected assets and split by kind
         try:
@@ -3328,11 +3369,8 @@ class BotHandlers:
     def _build_quick_action_map(self) -> dict[str, str]:
         quick_action_keys = {
             "models": "ui.buttons.models",
-            "web_models": "ui.buttons.web_models",
             "web_search": "ui.buttons.web_search",
             "files": "ui.buttons.files",
-            "current_model": "ui.buttons.current_model",
-            "clear": "ui.buttons.clear",
             "help": "ui.buttons.help",
         }
         mapping: dict[str, str] = {}
@@ -3674,15 +3712,10 @@ class BotHandlers:
             keyboard=[
                 [
                     KeyboardButton(self._i18n.t("ui.buttons.models", locale=locale)),
-                    KeyboardButton(self._i18n.t("ui.buttons.web_models", locale=locale)),
+                    KeyboardButton(self._i18n.t("ui.buttons.files", locale=locale)),
                 ],
                 [
                     KeyboardButton(self._i18n.t("ui.buttons.web_search", locale=locale)),
-                    KeyboardButton(self._i18n.t("ui.buttons.files", locale=locale)),
-                    KeyboardButton(self._i18n.t("ui.buttons.current_model", locale=locale)),
-                ],
-                [
-                    KeyboardButton(self._i18n.t("ui.buttons.clear", locale=locale)),
                     KeyboardButton(self._i18n.t("ui.buttons.help", locale=locale)),
                 ],
             ],

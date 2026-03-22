@@ -43,7 +43,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>¡Bienvenido!</b> Envíame un mensaje y pediré una respuesta a Ollama.\nUsa los botones de abajo o comandos con barra.",
-    "help": "ℹ️ Comandos disponibles:\n/start - Iniciar el bot\n/help - Mostrar esta ayuda\n/health - Comprobar estado de ejecución, base de datos y Ollama\n/clear - Borrar tu contexto\n/models - Listar modelos locales o seleccionar uno con /models <name>\n/webmodels - Explorar modelos web disponibles para instalar\n/files - Gestionar tus documentos e imágenes guardados\n/askfile - Preguntar usando un archivo concreto: /askfile <id> <pregunta>\n/currentmodel - Mostrar tu modelo activo\n\nPuedes enviar mensajes de texto o imágenes (con instrucciones opcionales en el pie de foto).",
+    "help": "Comandos disponibles:\n/start - Iniciar el bot\n/help - Mostrar esta ayuda\n/health - Comprobar estado de ejecución, base de datos y Ollama\n/clear - Borrar tu contexto\n/models - Listar modelos locales o seleccionar uno con /models <name>\n/webmodels - Explorar modelos web disponibles para instalar\n/files - Gestionar tus documentos e imágenes guardados\n/askfile - Preguntar usando un archivo concreto: /askfile <id> <pregunta>\n/currentmodel - Mostrar tu modelo activo\n/deletemodel - Eliminar un modelo local\n/info - Mostrar detalles del modelo\n/websearch - Buscar en la web\n\nPuedes enviar mensajes de texto o imágenes (con instrucciones opcionales en el pie de foto).",
     "askfile_prompt": "Ahora envía tu pregunta para el archivo #{id} ({name}).",
     "askfile_usage": "Uso: /askfile <id_archivo> <pregunta>. Ejemplo: /askfile 12 Resume este archivo.",
     "cancel_ask_done": "Modo pregunta cancelado. Puedes continuar normalmente.",
@@ -95,6 +95,8 @@
     "instructions": "Usa ✅/☑️ para seleccionar o deseleccionar archivos para contexto, 🗑 para eliminar.",
     "deleted": "Archivo eliminado.",
     "not_found": "Archivo no encontrado o ya eliminado.",
+    "delete_confirm": "¿Eliminar archivo <b>#{id}</b> ({name})? Esta acción no se puede deshacer.",
+    "delete_cancelled": "Eliminación de archivo cancelada.",
     "upload_prompt": "Modo de subida activo. Envía cualquier imagen para guardarla sin análisis del modelo.",
     "upload_done": "✅ Archivo #{id} guardado: {name}. Usa /askfile {id} para analizarlo."
   },
@@ -134,10 +136,10 @@
     "ollama_connection": "No he podido conectar con Ollama. Contacta con el administrador del bot.",
     "ollama_list_models": "No he podido cargar los modelos de Ollama ahora mismo. Vuelve a intentarlo más tarde.",
     "ollama_list_web_models": "No he podido cargar los modelos web ahora mismo. Vuelve a intentarlo más tarde.",
-    "ollama_validate_model": "No he podido validar el modelo seleccionado ahora mismo. Vuelve a intentarlo más tarde.",
+    "ollama_validate_model": "No he podido validar el modelo seleccionado. Inténtalo de nuevo o usa /models para elegir otro.",
     "save_model_preference": "No he podido guardar tu preferencia de modelo. Vuelve a intentarlo más tarde.",
     "save_default_model_preference": "No he podido guardar tu preferencia de modelo predeterminado. Vuelve a intentarlo más tarde.",
-    "files_storage": "No he podido actualizar tus archivos guardados ahora mismo. Vuelve a intentarlo más tarde.",
+    "files_storage": "No he podido actualizar tus archivos ahora mismo. Inténtalo de nuevo o revisa /files.",
     "ollama_generic": "Ollama devolvió un error. Vuelve a intentarlo en unos instantes."
   },
   "web_search": {

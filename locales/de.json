@@ -43,7 +43,7 @@
   },
   "messages": {
     "start_welcome": "✨ <b>Willkommen!</b> Sende eine Nachricht und ich frage Ollama nach einer Antwort.\nNutze die Schaltflächen unten oder Slash-Befehle.",
-    "help": "ℹ️ Verfügbare Befehle:\n/start - Bot starten\n/help - Diese Hilfe anzeigen\n/health - Laufzeit-, Datenbank- und Ollama-Status prüfen\n/clear - Deinen Kontext löschen\n/models - Lokale Modelle auflisten oder eines mit /models <name> auswählen\n/webmodels - Web-Modelle anzeigen, die installiert werden können\n/files - Deine gespeicherten Dokumente und Bilder verwalten\n/askfile - Mit einer bestimmten Datei fragen: /askfile <id> <frage>\n/currentmodel - Dein aktives Modell anzeigen\n\nDu kannst Textnachrichten oder Bilder senden (mit optionalen Anweisungen in der Bildbeschreibung).",
+    "help": "Verfügbare Befehle:\n/start - Bot starten\n/help - Diese Hilfe anzeigen\n/health - Laufzeit-, Datenbank- und Ollama-Status prüfen\n/clear - Deinen Kontext löschen\n/models - Lokale Modelle auflisten oder eines mit /models <name> auswählen\n/webmodels - Web-Modelle anzeigen, die installiert werden können\n/files - Deine gespeicherten Dokumente und Bilder verwalten\n/askfile - Mit einer bestimmten Datei fragen: /askfile <id> <frage>\n/currentmodel - Dein aktives Modell anzeigen\n/deletemodel - Ein lokales Modell löschen\n/info - Modelldetails anzeigen\n/websearch - Im Web suchen\n\nDu kannst Textnachrichten oder Bilder senden (mit optionalen Anweisungen in der Bildbeschreibung).",
     "askfile_prompt": "Sende jetzt deine Frage für Datei #{id} ({name}).",
     "askfile_usage": "Verwendung: /askfile <datei_id> <frage>. Beispiel: /askfile 12 Fasse diese Datei zusammen.",
     "cancel_ask_done": "Fragemodus abgebrochen. Du kannst normal fortfahren.",
@@ -95,6 +95,8 @@
     "instructions": "Nutze ✅/☑️ zum Auswählen oder Abwählen für Kontext, 🗑 zum Löschen.",
     "deleted": "Datei gelöscht.",
     "not_found": "Datei nicht gefunden oder bereits gelöscht.",
+    "delete_confirm": "Datei <b>#{id}</b> ({name}) löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "delete_cancelled": "Dateilöschung abgebrochen.",
     "upload_prompt": "Upload-Modus aktiv. Sende ein Bild, um es ohne Modellanalyse zu speichern.",
     "upload_done": "✅ Datei #{id} gespeichert: {name}. Verwende /askfile {id} zum Analysieren."
   },
@@ -134,10 +136,10 @@
     "ollama_connection": "Ich konnte keine Verbindung zu Ollama herstellen. Bitte kontaktiere den Bot-Administrator.",
     "ollama_list_models": "Ich konnte die Modelle von Ollama gerade nicht laden. Bitte versuche es später erneut.",
     "ollama_list_web_models": "Ich konnte die Web-Modelle gerade nicht laden. Bitte versuche es später erneut.",
-    "ollama_validate_model": "Ich konnte das ausgewählte Modell gerade nicht validieren. Bitte versuche es später erneut.",
+    "ollama_validate_model": "Ich konnte das ausgewählte Modell nicht validieren. Versuche es erneut oder wähle ein anderes mit /models.",
     "save_model_preference": "Ich konnte deine Modellpräferenz nicht speichern. Bitte versuche es später erneut.",
     "save_default_model_preference": "Ich konnte deine Standard-Modellpräferenz nicht speichern. Bitte versuche es später erneut.",
-    "files_storage": "Ich konnte deine gespeicherten Dateien gerade nicht aktualisieren. Bitte versuche es später erneut.",
+    "files_storage": "Ich konnte deine Dateien gerade nicht aktualisieren. Versuche es erneut oder prüfe /files.",
     "ollama_generic": "Ollama hat einen Fehler zurückgegeben. Bitte versuche es in wenigen Augenblicken erneut."
   },
   "web_search": {
