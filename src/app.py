@@ -31,8 +31,6 @@ def main() -> None:
 
     logger.info("Starting ollama-telegram-bot version=%s", app_version)
 
-    application = Application.builder().token(settings.telegram_bot_token).build()
-
     locales_dir = Path(__file__).resolve().parent.parent / "locales"
     i18n = I18nService(locales_dir=locales_dir, default_locale=settings.bot_default_locale)
     i18n.validate_required_keys(BotHandlers.required_i18n_keys())
@@ -87,12 +85,23 @@ def main() -> None:
     purged = user_assets_store.purge_expired_assets(settings.asset_ttl_days)
     if purged > 0:
         logger.info("startup_assets_purged count=%d ttl_days=%d", purged, settings.asset_ttl_days)
+
     ollama_client = OllamaClient(
         base_url=settings.ollama_base_url,
         cloud_base_url=settings.ollama_cloud_base_url,
         timeout_seconds=settings.request_timeout_seconds,
         api_key=settings.ollama_api_key,
         auth_scheme=settings.ollama_auth_scheme,
+    )
+
+    async def _on_shutdown(_: Application) -> None:
+        await ollama_client.close()
+
+    application = (
+        Application.builder()
+        .token(settings.telegram_bot_token)
+        .post_shutdown(_on_shutdown)
+        .build()
     )
 
     handlers = BotHandlers(

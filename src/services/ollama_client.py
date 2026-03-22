@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from dataclasses import dataclass, field
 from time import monotonic
 from typing import Any
@@ -131,6 +131,14 @@ class OllamaClient:
         self._api_key = api_key
         self._auth_scheme = auth_scheme
         self._vision_capability_cache: dict[str, bool] = {}
+        self._client = httpx.AsyncClient(
+            timeout=timeout_seconds,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+
+    async def close(self) -> None:
+        """Close the persistent HTTP client."""
+        await self._client.aclose()
 
     def _is_cloud_model(self, model: str) -> bool:
         return model.strip().lower().endswith("-cloud")
@@ -188,11 +196,11 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
-                    response = await client.post(
-                        f"{self._target_base_url(model)}/api/generate",
-                        json=payload,
-                    )
+                response = await self._client.post(
+                    f"{self._target_base_url(model)}/api/generate",
+                    json=payload,
+                    headers=self._request_headers(),
+                )
                 response.raise_for_status()
                 data = response.json()
                 text = str(data.get("response", "")).strip()
@@ -291,8 +299,7 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout) as client:
-                    response = await client.get(url)
+                response = await self._client.get(url)
                 response.raise_for_status()
                 return response.text
             except httpx.TimeoutException as error:
@@ -342,31 +349,31 @@ class OllamaClient:
         started_at = monotonic()
         logger.info("ollama_pull_model_start model=%s", model_name)
         try:
-            async with httpx.AsyncClient(timeout=None) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self._base_url}/api/pull",
-                    json={"model": model_name, "stream": True},
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if cancel_event and cancel_event.is_set():
-                            logger.info("ollama_pull_model_cancelled model=%s", model_name)
-                            raise asyncio.CancelledError(f"Pull cancelled: {model_name}")
-                        if not line.strip():
-                            continue
-                        try:
-                            chunk = json.loads(line)
-                        except json.JSONDecodeError:
-                            continue
-                        if err := chunk.get("error"):
-                            raise OllamaError(f"Pull error: {err}")
-                        if progress_callback:
-                            await progress_callback(
-                                chunk.get("status", ""),
-                                chunk.get("completed", 0),
-                                chunk.get("total", 0),
-                            )
+            async with self._client.stream(
+                "POST",
+                f"{self._base_url}/api/pull",
+                json={"model": model_name, "stream": True},
+                timeout=None,
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if cancel_event and cancel_event.is_set():
+                        logger.info("ollama_pull_model_cancelled model=%s", model_name)
+                        raise asyncio.CancelledError(f"Pull cancelled: {model_name}")
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if err := chunk.get("error"):
+                        raise OllamaError(f"Pull error: {err}")
+                    if progress_callback:
+                        await progress_callback(
+                            chunk.get("status", ""),
+                            chunk.get("completed", 0),
+                            chunk.get("total", 0),
+                        )
         except asyncio.CancelledError:
             raise
         except httpx.TimeoutException as error:
@@ -385,12 +392,11 @@ class OllamaClient:
         """Delete a local model via DELETE /api/delete."""
         logger.info("ollama_delete_model_start model=%s", model_name)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.request(
-                    "DELETE",
-                    f"{self._base_url}/api/delete",
-                    json={"model": model_name},
-                )
+            response = await self._client.request(
+                "DELETE",
+                f"{self._base_url}/api/delete",
+                json={"model": model_name},
+            )
             response.raise_for_status()
         except httpx.TimeoutException as error:
             raise OllamaTimeoutError(f"Delete request timed out: {model_name}") from error
@@ -410,11 +416,10 @@ class OllamaClient:
     async def show_model(self, model_name: str) -> dict[str, Any]:
         """Return model metadata via POST /api/show."""
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(
-                    f"{self._base_url}/api/show",
-                    json={"model": model_name},
-                )
+            response = await self._client.post(
+                f"{self._base_url}/api/show",
+                json={"model": model_name},
+            )
             response.raise_for_status()
         except httpx.TimeoutException as error:
             raise OllamaTimeoutError(f"Show request timed out: {model_name}") from error
@@ -450,12 +455,12 @@ class OllamaClient:
             "Content-Type": "application/json",
         }
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
-                response = await client.post(
-                    f"{self._cloud_base_url}/api/web_search",
-                    json={"query": query, "max_results": max_results},
-                    headers=headers,
-                )
+            response = await self._client.post(
+                f"{self._cloud_base_url}/api/web_search",
+                json={"query": query, "max_results": max_results},
+                headers=headers,
+                timeout=httpx.Timeout(30.0),
+            )
             response.raise_for_status()
         except httpx.TimeoutException as error:
             raise OllamaTimeoutError("Web search request timed out") from error
@@ -506,14 +511,11 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(
-                    timeout=self._timeout,
+                response = await self._client.post(
+                    f"{self._target_base_url(model)}/api/chat",
+                    json=payload,
                     headers=self._request_headers(model),
-                ) as client:
-                    response = await client.post(
-                        f"{self._target_base_url(model)}/api/chat",
-                        json=payload,
-                    )
+                )
                 response.raise_for_status()
                 data = response.json()
                 message = data.get("message") or {}
@@ -576,8 +578,10 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(timeout=self._timeout, headers=self._request_headers()) as client:
-                    response = await client.get(f"{self._base_url}/api/tags")
+                response = await self._client.get(
+                    f"{self._base_url}/api/tags",
+                    headers=self._request_headers(),
+                )
                 response.raise_for_status()
                 data = response.json()
                 models_raw = data.get("models", [])
@@ -624,14 +628,11 @@ class OllamaClient:
             return self._vision_capability_cache[model]
 
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout,
+            response = await self._client.post(
+                f"{self._target_base_url(model)}/api/show",
+                json={"model": model},
                 headers=self._request_headers(model),
-            ) as client:
-                response = await client.post(
-                    f"{self._target_base_url(model)}/api/show",
-                    json={"model": model},
-                )
+            )
             response.raise_for_status()
             data = response.json()
             capabilities = data.get("capabilities")
@@ -694,14 +695,11 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(
-                    timeout=self._timeout,
+                response = await self._client.post(
+                    f"{self._target_base_url(model)}/api/chat",
+                    json=payload,
                     headers=self._request_headers(model),
-                ) as client:
-                    response = await client.post(
-                        f"{self._target_base_url(model)}/api/chat",
-                        json=payload,
-                    )
+                )
                 response.raise_for_status()
                 data = response.json()
                 message = data.get("message") or {}
@@ -810,14 +808,11 @@ class OllamaClient:
         last_error: Exception | None = None
         for attempt in range(self._retries + 1):
             try:
-                async with httpx.AsyncClient(
-                    timeout=self._timeout,
+                response = await self._client.post(
+                    f"{self._target_base_url(model)}/api/generate",
+                    json=payload,
                     headers=self._request_headers(model),
-                ) as client:
-                    response = await client.post(
-                        f"{self._target_base_url(model)}/api/generate",
-                        json=payload,
-                    )
+                )
                 response.raise_for_status()
                 data = response.json()
                 text = str(data.get("response", "")).strip()
@@ -859,6 +854,115 @@ class OllamaClient:
         if last_error:
             raise OllamaError("Unexpected Ollama failure") from last_error
         raise OllamaError("Unexpected Ollama failure")
+
+    async def stream_chat(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        context_turns: list[ConversationTurn],
+        keep_alive: str,
+        prompt_images: list[str] | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Yield text chunks from Ollama /api/chat in streaming mode."""
+        messages = self._compose_messages(
+            prompt=prompt, context_turns=context_turns, prompt_images=prompt_images,
+        )
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+            "keep_alive": keep_alive,
+        }
+        try:
+            async with self._client.stream(
+                "POST",
+                f"{self._target_base_url(model)}/api/chat",
+                json=payload,
+                headers=self._request_headers(model),
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if err := chunk.get("error"):
+                        raise OllamaError(f"Stream error: {err}")
+                    msg = chunk.get("message") or {}
+                    content = msg.get("content", "")
+                    if content:
+                        yield content
+                    if chunk.get("done", False):
+                        return
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError("Ollama chat stream timed out") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError("Could not reach Ollama") from error
+        except httpx.HTTPStatusError as error:
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Ollama returned HTTP {error.response.status_code}: {detail}"
+            ) from error
+
+    async def stream_generate(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        context_turns: list[ConversationTurn],
+        images: list[str] | None = None,
+        keep_alive: str | None = None,
+    ) -> AsyncGenerator[str, None]:
+        """Yield text chunks from Ollama /api/generate in streaming mode."""
+        system_turns = [t for t in context_turns if t.role == "system"]
+        non_system_turns = [t for t in context_turns if t.role != "system"]
+        system_content = system_turns[-1].content if system_turns else None
+        composed_prompt = self._compose_prompt(prompt=prompt, context_turns=non_system_turns)
+        payload: dict[str, Any] = {
+            "model": model,
+            "prompt": composed_prompt,
+            "stream": True,
+        }
+        if system_content:
+            payload["system"] = system_content
+        if images:
+            payload["images"] = images
+        if keep_alive is not None:
+            payload["keep_alive"] = keep_alive
+        try:
+            async with self._client.stream(
+                "POST",
+                f"{self._target_base_url(model)}/api/generate",
+                json=payload,
+                headers=self._request_headers(),
+            ) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if err := chunk.get("error"):
+                        raise OllamaError(f"Stream error: {err}")
+                    text = chunk.get("response", "")
+                    if text:
+                        yield text
+                    if chunk.get("done", False):
+                        return
+        except httpx.TimeoutException as error:
+            raise OllamaTimeoutError("Ollama generate stream timed out") from error
+        except httpx.RequestError as error:
+            raise OllamaConnectionError("Could not reach Ollama") from error
+        except httpx.HTTPStatusError as error:
+            detail = error.response.text[:300]
+            raise OllamaError(
+                f"Ollama returned HTTP {error.response.status_code}: {detail}"
+            ) from error
 
     @staticmethod
     def _looks_like_missing_image_response(text: str) -> bool:

@@ -3,8 +3,6 @@ services:
     image: ${BOT_IMAGE}
     container_name: ${BOT_CONTAINER_NAME:-ollama-telegram-bot}
     restart: unless-stopped
-    # env_file:
-    #   - .env
     volumes:
       - ${BOT_DATA_DIR:-./data}:/data
     environment:

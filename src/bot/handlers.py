@@ -83,6 +83,7 @@ FILES_CONTEXT_MAX_ITEMS_DEFAULT = 3
 WEBSEARCH_MAX_RESULTS = 5
 WEBSEARCH_CONTEXT_MAX_CHARS = 4000
 FILES_CONTEXT_MAX_CHARS_DEFAULT = 6000
+_STREAM_EDIT_INTERVAL = 1.0
 
 
 class BotHandlers:
@@ -641,7 +642,8 @@ class BotHandlers:
 
         await update.effective_chat.send_action(action=ChatAction.TYPING)
         try:
-            ollama_response = await self._generate_response(
+            full_text = await self._send_streaming_response(
+                update=update,
                 user_id=user_id,
                 model=model,
                 prompt=prompt_to_send,
@@ -671,7 +673,7 @@ class BotHandlers:
             return
 
         self._context_store.append(user_id, role="user", content=f"[AskFile #{asset.id}] {prompt}")
-        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+        self._context_store.append(user_id, role="assistant", content=full_text)
 
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
@@ -681,12 +683,10 @@ class BotHandlers:
             asset.id,
             agent_name,
             len(prompt),
-            len(ollama_response.text),
+            len(full_text),
             elapsed_ms,
         )
 
-        for chunk in split_message(ollama_response.text):
-            await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
         if orch_notification:
             await update.effective_message.reply_text(
                 f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML
@@ -1572,7 +1572,8 @@ class BotHandlers:
         system_instruction = self._agent_system_instruction("chat", locale)
 
         try:
-            ollama_response = await self._generate_response(
+            full_text = await self._send_streaming_response(
+                update=update,
                 user_id=user_id,
                 model=model,
                 prompt=enriched_prompt,
@@ -1599,10 +1600,7 @@ class BotHandlers:
             return
 
         self._context_store.append(user_id, role="user", content=query_str)
-        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
-
-        for chunk in split_message(ollama_response.text):
-            await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
+        self._context_store.append(user_id, role="assistant", content=full_text)
 
         # Sources footer
         sources_lines = [
@@ -2316,10 +2314,9 @@ class BotHandlers:
         else:
             prompt_to_send = user_text
 
-        await update.effective_chat.send_action(action=ChatAction.TYPING)
-
         try:
-            ollama_response = await self._generate_response(
+            full_text = await self._send_streaming_response(
+                update=update,
                 user_id=user_id,
                 model=model,
                 prompt=prompt_to_send,
@@ -2349,7 +2346,7 @@ class BotHandlers:
             return
 
         self._context_store.append(user_id, role="user", content=user_text)
-        self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+        self._context_store.append(user_id, role="assistant", content=full_text)
 
         elapsed_ms = int((monotonic() - started_at) * 1000)
         logger.info(
@@ -2358,12 +2355,10 @@ class BotHandlers:
             model,
             agent_name,
             len(user_text),
-            len(ollama_response.text),
+            len(full_text),
             elapsed_ms,
         )
 
-        for chunk in split_message(ollama_response.text):
-            await update.effective_message.reply_text(chunk, parse_mode=ParseMode.HTML)
         if orch_notification:
             await update.effective_message.reply_text(
                 f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML
@@ -2742,7 +2737,8 @@ class BotHandlers:
             model = selected_model
 
             await update.effective_chat.send_action(action=ChatAction.TYPING)
-            ollama_response = await self._generate_response(
+            full_text = await self._send_streaming_response(
+                update=update,
                 user_id=user_id,
                 model=model,
                 prompt=review_prompt,
@@ -2755,7 +2751,7 @@ class BotHandlers:
                 role="user",
                 content=f"[Document review: {file_name}] {caption}",
             )
-            self._context_store.append(user_id, role="assistant", content=ollama_response.text)
+            self._context_store.append(user_id, role="assistant", content=full_text)
 
             elapsed_ms = int((monotonic() - started_at) * 1000)
             logger.info(
@@ -2764,12 +2760,10 @@ class BotHandlers:
                 model,
                 file_name,
                 len(review_prompt),
-                len(ollama_response.text),
+                len(full_text),
                 elapsed_ms,
             )
 
-            for chunk in split_message(ollama_response.text):
-                await message.reply_text(chunk, parse_mode=ParseMode.HTML)
             if orch_notification:
                 await message.reply_text(f"<i>{orch_notification}</i>", parse_mode=ParseMode.HTML)
         except ValueError as error:
@@ -2891,6 +2885,116 @@ class BotHandlers:
             images=prompt_images if prompt_images else None,
             keep_alive=self._keep_alive,
         )
+
+    async def _send_streaming_response(
+        self,
+        *,
+        update: Update,
+        user_id: int,
+        model: str,
+        prompt: str,
+        turns: list[ConversationTurn],
+        system_instruction: str,
+        extra_turns: list[ConversationTurn] | None = None,
+        prompt_images: list[str] | None = None,
+    ) -> str:
+        """Stream an Ollama response, editing a Telegram placeholder every ~1 s.
+
+        Returns the full accumulated text.  Falls back to non-streaming
+        ``_generate_response`` on unexpected streaming failures.
+        """
+        turns_for_model: list[ConversationTurn] = [
+            ConversationTurn(role="system", content=system_instruction),
+        ]
+        if extra_turns:
+            turns_for_model.extend(extra_turns)
+        turns_for_model.extend(turns)
+
+        placeholder = await update.effective_message.reply_text("\u23f3")
+
+        try:
+            accumulated = ""
+            last_edit = 0.0
+
+            if self._use_chat_api:
+                stream = self._ollama_client.stream_chat(
+                    model=model,
+                    prompt=prompt,
+                    context_turns=turns_for_model,
+                    keep_alive=self._keep_alive,
+                    prompt_images=prompt_images,
+                )
+            else:
+                stream = self._ollama_client.stream_generate(
+                    model=model,
+                    prompt=prompt,
+                    context_turns=turns_for_model,
+                    images=prompt_images,
+                    keep_alive=self._keep_alive,
+                )
+
+            async for chunk in stream:
+                accumulated += chunk
+                now = monotonic()
+                if now - last_edit >= _STREAM_EDIT_INTERVAL and accumulated.strip():
+                    display = accumulated
+                    if len(display) > 4000:
+                        display = display[:4000] + "\n\u23f3\u2026"
+                    try:
+                        await placeholder.edit_text(display)
+                    except Exception:  # noqa: BLE001
+                        pass
+                    last_edit = now
+
+            if not accumulated.strip():
+                raise OllamaError("Empty streaming response from Ollama")
+
+            # Final edit with complete text
+            chunks = split_message(accumulated)
+            try:
+                await placeholder.edit_text(chunks[0], parse_mode=ParseMode.HTML)
+            except Exception:  # noqa: BLE001
+                try:
+                    await placeholder.edit_text(chunks[0])
+                except Exception:  # noqa: BLE001
+                    pass
+            for extra_chunk in chunks[1:]:
+                try:
+                    await update.effective_message.reply_text(
+                        extra_chunk, parse_mode=ParseMode.HTML,
+                    )
+                except Exception:  # noqa: BLE001
+                    await update.effective_message.reply_text(extra_chunk)
+
+            return accumulated
+
+        except (OllamaTimeoutError, OllamaConnectionError, OllamaError):
+            try:
+                await placeholder.delete()
+            except Exception:  # noqa: BLE001
+                pass
+            raise
+        except Exception as exc:
+            # Unexpected streaming error — fall back to non-streaming
+            logger.warning("streaming_fallback user_id=%s error=%s", user_id, exc)
+            try:
+                await placeholder.delete()
+            except Exception:  # noqa: BLE001
+                pass
+            response = await self._generate_response(
+                user_id=user_id,
+                model=model,
+                prompt=prompt,
+                turns=turns,
+                system_instruction=system_instruction,
+                extra_turns=extra_turns,
+                prompt_images=prompt_images,
+            )
+            for c in split_message(response.text):
+                await update.effective_message.reply_text(
+                    c, parse_mode=ParseMode.HTML,
+                )
+            return response.text
 
     async def _orchestrate_model(
         self,
