@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.9] - 2026-03-22
+
+### Added
+- Added **streaming responses**: model output is now streamed to the user in real time. A placeholder message (⏳) is sent immediately and edited every ~1 second with accumulated text, then finalised with HTML formatting. Overflow chunks beyond Telegram's 4 096-char limit are sent as follow-up messages.
+- Added `stream_chat()` and `stream_generate()` async generators to `OllamaClient` for NDJSON streaming from `/api/chat` and `/api/generate`.
+- Added `_send_streaming_response()` to `BotHandlers` with automatic fallback to non-streaming `_generate_response()` on unexpected errors.
+- Added **file deletion confirmation**: the 🗑 button in `/files` now shows a Confirm/Cancel prompt mentioning the file name before deleting. New i18n keys `files.delete_confirm` and `files.delete_cancelled` in all 5 locales.
+- Added `ChatAction.TYPING` indicator to the main `on_text` handler and to the model-refresh callback, matching the rest of the bot's handlers.
+- Added command-only documentation (section E) and streaming UX pattern (section F) to `copilot-instructions.md`.
+
+### Changed
+- Replaced 13 per-request `httpx.AsyncClient` instantiations in `OllamaClient` with a single **persistent client** (connection pool: 20 max / 10 keep-alive). Added `close()` method and `post_shutdown` hook in `app.py` for clean teardown.
+- Reduced persistent keyboard from 7 buttons (3 rows) to **4 buttons in a 2×2 grid**: 🧠 Models, 📁 Files, 🔎 Web Search, ❓ Help. Removed 🌐 Web Models, 📌 Current Model, and 🧹 Clear Context from the keyboard (still accessible via slash commands).
+- Changed `/currentmodel` to reply with the persistent keyboard instead of inline navigation buttons (Open Models / Use Default), complying with the "inline buttons only for context" guideline.
+- Changed `/help` to use the `_info()` helper (ℹ️ icon applied consistently); removed the hardcoded ℹ️ from the i18n string. Updated help text in all 5 locales to include `/deletemodel`, `/info`, and `/websearch`.
+- Improved `errors.ollama_validate_model` and `errors.files_storage` messages in all 5 locales to include actionable next steps (`/models`, `/files`).
+
 ## [0.0.8] - 2026-02-26
 
 - Added **🔍 Search button on `/webmodels` list**: tapping the button enters an interactive search mode — the user's next text message is used as the filter query, updating the list in place. Avoids having to retype `/webmodels <query>` each time.

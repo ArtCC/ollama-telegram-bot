@@ -15,6 +15,7 @@ Open-source Telegram bot to chat with local Ollama models and Ollama Cloud from 
 ## Overview
 
 - Full conversational chat backed by local Ollama models via `/api/chat` (with `/api/generate` fallback).
+- **Streaming responses**: model output appears in real time — a placeholder is sent instantly and updated every ~1 second until the answer is complete.
 - Text, image, and document (TXT / MD / CSV / JSON / YAML / PDF / DOCX / XLSX) input modes; voice/audio intentionally disabled.
 - File memory: uploaded files are persisted per user and can be injected as RAG context for any future message.
 - Web catalog browser (`/webmodels`): browse, search, and download models from `ollama.com/search` with real-time progress and cancel.
@@ -43,13 +44,61 @@ Open-source Telegram bot to chat with local Ollama models and Ollama Cloud from 
 | `/websearch <query>` | Search the live web; your local model synthesises an answer from the results. Requires `OLLAMA_API_KEY`. |
 | `/cancel` | Exit any pending interaction mode (search input, ask mode, etc.). |
 
+## User Interface
+
+### Persistent Keyboard
+
+A compact 2×2 keyboard is always visible at the bottom of the chat:
+
+| | |
+|---|---|
+| 🧠 Models | 📁 Files |
+| 🔎 Web Search | ❓ Help |
+
+These buttons trigger the same actions as their slash-command equivalents (`/models`, `/files`, `/websearch`, `/help`). The keyboard reappears automatically after every bot action.
+
+Other commands (`/webmodels`, `/currentmodel`, `/clear`, `/deletemodel`, `/info`, `/askfile`, `/cancel`, `/health`) are available only via slash commands — see the Commands table above.
+
+### Inline Buttons
+
+Contextual inline buttons appear inside specific flows:
+
+- **Model lists** — pagination (⬅️ / ➡️), refresh (🔄), close (✖️).
+- **File management** — toggle selection (✅/☑️), delete (🗑 with Confirm/Cancel), ask (💬), preview (🖼️), add (📤).
+- **Web model catalog** — download (⬇️), size picker, open web page (🌐), cancel download (⏹).
+- **Destructive actions** — `/clear`, `/deletemodel`, and file deletion always show a Confirm / Cancel pair.
+
+### Status Icons
+
+All bot messages follow a consistent icon convention:
+
+| Icon | Meaning |
+|---|---|
+| ℹ️ | Informational |
+| ✅ | Success |
+| ⚠️ | Warning |
+| ❌ | Error |
+| ⏳ | Processing / streaming in progress |
+
+### Streaming Responses
+
+Model answers are streamed in real time:
+
+1. The bot sends a placeholder message (⏳) immediately.
+2. Text is accumulated and the message is edited every ~1 second.
+3. Intermediate edits use plain text; the final edit applies HTML formatting.
+4. If the response exceeds Telegram's 4 096-character limit, remaining text is sent as follow-up messages.
+
 ## Project Structure
 
 ```text
 ollama-telegram-bot/
 ├── .github/
+│   ├── copilot-instructions.md
 │   └── workflows/
 │       └── docker-publish.yml
+├── assets/
+│   └── ollama-telegram-bot.png
 ├── locales/
 │   ├── de.json
 │   ├── en.json
@@ -59,8 +108,8 @@ ollama-telegram-bot/
 ├── src/
 │   ├── app.py
 │   ├── bot/
-│   │   ├── handlers.py
-│   │   └── error_handler.py
+│   │   ├── error_handler.py
+│   │   └── handlers.py
 │   ├── config/
 │   │   └── settings.py
 │   ├── core/
@@ -69,7 +118,6 @@ ollama-telegram-bot/
 │   │   ├── rate_limiter.py
 │   │   └── user_assets_store.py
 │   ├── i18n/
-│   │   ├── __init__.py
 │   │   └── service.py
 │   ├── services/
 │   │   ├── model_orchestrator.py
@@ -85,13 +133,14 @@ ollama-telegram-bot/
 │   ├── test_rate_limiter.py
 │   ├── test_settings.py
 │   └── test_telegram_utils.py
-├── docker-compose.yml
-├── Dockerfile
 ├── .env.example
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
-├── ROADMAP.md
-└── pyproject.toml
+├── docker-compose.yml
+├── Dockerfile
+├── LICENSE
+├── pyproject.toml
+└── ROADMAP.md
 ```
 
 ## Configuration
