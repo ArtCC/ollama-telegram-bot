@@ -43,6 +43,28 @@ class I18nService:
     def t(self, key: str, locale: str | None = None, **kwargs: Any) -> str:
         preferred_locale = self.resolve_locale(locale)
 
+        # Pluralization: if a 'count' kwarg is provided, try plural sub-keys
+        count = kwargs.get("count")
+        if count is not None:
+            plural_suffix = ".one" if count == 1 else ".other"
+            plural_key = key + plural_suffix
+            template = self._lookup(self._translations.get(preferred_locale, {}), plural_key)
+            if template is None and preferred_locale != self._default_locale:
+                template = self._lookup(self._translations.get(self._default_locale, {}), plural_key)
+            # If plural key found, use it. Otherwise fall through to normal key.
+            if template is not None and isinstance(template, str):
+                if kwargs:
+                    try:
+                        return template.format(**kwargs)
+                    except KeyError as error:
+                        logger.warning(
+                            "i18n_format_missing_arg key=%s locale=%s missing=%s",
+                            plural_key,
+                            preferred_locale,
+                            error,
+                        )
+                return template
+
         template = self._lookup(self._translations.get(preferred_locale, {}), key)
         if template is None and preferred_locale != self._default_locale:
             template = self._lookup(self._translations.get(self._default_locale, {}), key)

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 import re
 import sqlite3
+import threading
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -23,13 +27,37 @@ class UserAsset:
 
 
 class UserAssetsStore:
+    _SCHEMA_VERSION = 3
+
     def __init__(self, db_path: str) -> None:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path, timeout=5)
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            self._local.conn = conn
+        return conn
+
+    def _get_schema_version(self, connection: sqlite3.Connection) -> int:
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS schema_versions "
+            "(table_name TEXT PRIMARY KEY, version INTEGER NOT NULL)"
+        )
+        row = connection.execute(
+            "SELECT version FROM schema_versions WHERE table_name = 'user_assets'"
+        ).fetchone()
+        return int(row[0]) if row else 0
+
+    def _set_schema_version(self, connection: sqlite3.Connection, version: int) -> None:
+        connection.execute(
+            "INSERT INTO schema_versions (table_name, version) VALUES ('user_assets', ?) "
+            "ON CONFLICT(table_name) DO UPDATE SET version = excluded.version",
+            (version,),
+        )
 
     def _init_schema(self) -> None:
         with self._connect() as connection:
@@ -52,24 +80,48 @@ class UserAssetsStore:
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS idx_user_assets_user_id_id ON user_assets(user_id, id DESC)"
             )
-            # Schema migration: add content_hash column for deduplication
-            try:
+
+            current_version = self._get_schema_version(connection)
+
+            if current_version < 1:
+                # Migration v1: add content_hash and image_base64 columns
+                cols = {row[1] for row in connection.execute("PRAGMA table_info(user_assets)")}
+                if "content_hash" not in cols:
+                    connection.execute(
+                        "ALTER TABLE user_assets ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"
+                    )
+                    connection.execute(
+                        "CREATE INDEX IF NOT EXISTS idx_user_assets_content_hash "
+                        "ON user_assets(user_id, content_hash)"
+                    )
+                if "image_base64" not in cols:
+                    connection.execute(
+                        "ALTER TABLE user_assets ADD COLUMN image_base64 TEXT NOT NULL DEFAULT ''"
+                    )
+                logger.info("user_assets_store migration_applied version=1")
+
+            if current_version < 2:
+                # Migration v2: add index on created_at for TTL purge
                 connection.execute(
-                    "ALTER TABLE user_assets ADD COLUMN content_hash TEXT NOT NULL DEFAULT ''"
+                    "CREATE INDEX IF NOT EXISTS idx_user_assets_created_at "
+                    "ON user_assets(created_at)"
                 )
+                logger.info("user_assets_store migration_applied version=2")
+
+            if current_version < 3:
+                # Migration v3: FTS5 virtual table for full-text search
                 connection.execute(
-                    "CREATE INDEX IF NOT EXISTS idx_user_assets_content_hash "
-                    "ON user_assets(user_id, content_hash)"
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS user_assets_fts "
+                    "USING fts5(content_text, content='user_assets', content_rowid='id')"
                 )
-            except sqlite3.OperationalError:
-                pass  # Column already exists
-            # Schema migration: add image_base64 column for image RAG replay
-            try:
+                # Populate FTS index from existing rows
                 connection.execute(
-                    "ALTER TABLE user_assets ADD COLUMN image_base64 TEXT NOT NULL DEFAULT ''"
+                    "INSERT OR IGNORE INTO user_assets_fts(rowid, content_text) "
+                    "SELECT id, content_text FROM user_assets"
                 )
-            except sqlite3.OperationalError:
-                pass  # Column already exists
+                logger.info("user_assets_store migration_applied version=3")
+
+            self._set_schema_version(connection, self._SCHEMA_VERSION)
             connection.commit()
 
     def add_asset(
@@ -119,8 +171,14 @@ class UserAssetsStore:
                     image_base64,
                 ),
             )
+            new_id = int(cursor.lastrowid)
+            # Keep FTS index in sync
+            connection.execute(
+                "INSERT INTO user_assets_fts(rowid, content_text) VALUES (?, ?)",
+                (new_id, content_text),
+            )
             connection.commit()
-            return int(cursor.lastrowid)
+            return new_id
 
     def list_assets(self, user_id: int) -> list[UserAsset]:
         with self._connect() as connection:
@@ -166,6 +224,13 @@ class UserAssetsStore:
                 "DELETE FROM user_assets WHERE user_id = ? AND id = ?",
                 (user_id, asset_id),
             )
+            if cursor.rowcount > 0:
+                # Keep FTS index in sync
+                connection.execute(
+                    "INSERT INTO user_assets_fts(user_assets_fts, rowid, content_text) "
+                    "VALUES('delete', ?, '')",
+                    (asset_id,),
+                )
             connection.commit()
             return cursor.rowcount > 0
 
@@ -199,21 +264,43 @@ class UserAssetsStore:
 
         tokens = self._tokenize(query)
         if tokens:
-            scored: list[tuple[int, UserAsset]] = []
-            unscored: list[UserAsset] = []
-            for asset in assets:
-                lowered = asset.content_text.lower()
-                score = sum(lowered.count(token) for token in tokens)
-                if score > 0:
-                    scored.append((score, asset))
-                else:
-                    unscored.append(asset)
-            scored.sort(key=lambda item: (item[0], item[1].id), reverse=True)
-            selected_assets: list[UserAsset] = [item[1] for item in scored[:limit]]
-            # Fill remaining slots with unscored assets (recency order)
-            remaining_slots = limit - len(selected_assets)
-            if remaining_slots > 0:
-                selected_assets.extend(unscored[:remaining_slots])
+            # Use FTS5 for fast full-text ranking when available
+            fts_ranked_ids: list[int] | None = None
+            fts_query = " OR ".join(tokens)
+            try:
+                with self._connect() as connection:
+                    rows = connection.execute(
+                        "SELECT rowid FROM user_assets_fts WHERE user_assets_fts MATCH ? "
+                        "ORDER BY rank LIMIT ?",
+                        (fts_query, limit * 3),
+                    ).fetchall()
+                    fts_ranked_ids = [int(r[0]) for r in rows]
+            except Exception:
+                fts_ranked_ids = None
+
+            if fts_ranked_ids is not None:
+                asset_by_id = {a.id: a for a in assets}
+                # Preserve FTS rank order, then fill with remaining assets
+                scored_assets = [asset_by_id[aid] for aid in fts_ranked_ids if aid in asset_by_id]
+                seen = set(fts_ranked_ids)
+                remaining = [a for a in assets if a.id not in seen]
+                selected_assets = (scored_assets + remaining)[:limit]
+            else:
+                # Fallback: in-memory scoring
+                scored: list[tuple[int, UserAsset]] = []
+                unscored: list[UserAsset] = []
+                for asset in assets:
+                    lowered = asset.content_text.lower()
+                    score = sum(lowered.count(token) for token in tokens)
+                    if score > 0:
+                        scored.append((score, asset))
+                    else:
+                        unscored.append(asset)
+                scored.sort(key=lambda item: (item[0], item[1].id), reverse=True)
+                selected_assets = [item[1] for item in scored[:limit]]
+                remaining_slots = limit - len(selected_assets)
+                if remaining_slots > 0:
+                    selected_assets.extend(unscored[:remaining_slots])
         else:
             selected_assets = assets[:limit]
 
@@ -254,7 +341,7 @@ class UserAssetsStore:
 
     @staticmethod
     def _tokenize(text: str) -> list[str]:
-        return [token for token in re.findall(r"\w+", text.lower()) if len(token) >= 3]
+        return [token for token in re.findall(r"\w+", text.lower()) if len(token) >= 2]
 
     @staticmethod
     def _compute_hash(text: str) -> str:

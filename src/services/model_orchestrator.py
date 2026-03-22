@@ -131,6 +131,8 @@ class ModelOrchestrator:
         self._client = ollama_client
         self._models_cache: list[str] = []
         self._models_cache_at: float = 0.0
+        self._vision_models_cache: set[str] = set()
+        self._vision_cache_at: float = 0.0
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -174,21 +176,21 @@ class ModelOrchestrator:
         models = await self._get_models()
 
         if task == TASK_VISION:
-            # Preferred model already supports vision? Keep it.
-            preferred_vision = await self._client.supports_vision(preferred_model)
-            if preferred_vision is True:
+            # Use batch-cached vision models to avoid per-model HTTP calls
+            vision_models = await self._get_vision_models()
+
+            if preferred_model in vision_models:
                 logger.debug(
                     "orchestrator VISION preferred_model=%s already supports vision",
                     preferred_model,
                 )
                 return preferred_model, False, True
 
-            # Scan for a vision-capable model.
+            # Pick the first vision-capable model that is available
             for model in models:
                 if model == preferred_model:
                     continue
-                cap = await self._client.supports_vision(model)
-                if cap is True:
+                if model in vision_models:
                     logger.info(
                         "orchestrator VISION selected=%s preferred=%s",
                         model,
@@ -232,6 +234,26 @@ class ModelOrchestrator:
         return preferred_model, False, True
 
     # ── Internals ─────────────────────────────────────────────────────────────
+
+    async def _get_vision_models(self) -> set[str]:
+        """Return the set of vision-capable models, refreshing periodically."""
+        now = monotonic()
+        if (now - self._vision_cache_at) < _MODELS_CACHE_TTL and self._vision_models_cache:
+            return self._vision_models_cache
+        models = await self._get_models()
+        vision: set[str] = set()
+        for model in models:
+            cap = await self._client.supports_vision(model)
+            if cap is True:
+                vision.add(model)
+        self._vision_models_cache = vision
+        self._vision_cache_at = now
+        logger.debug(
+            "orchestrator vision_cache_refreshed vision_count=%d total=%d",
+            len(vision),
+            len(models),
+        )
+        return vision
 
     async def _get_models(self) -> list[str]:
         now = monotonic()

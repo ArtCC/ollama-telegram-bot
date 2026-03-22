@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -45,10 +46,15 @@ class SQLiteContextStore:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         self._max_turns = max_turns
+        self._local = threading.local()
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path, timeout=5)
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            self._local.conn = conn
+        return conn
 
     def _init_schema(self) -> None:
         with self._connect() as connection:
@@ -90,20 +96,25 @@ class SQLiteContextStore:
                 "INSERT INTO conversation_turns (user_id, role, content) VALUES (?, ?, ?)",
                 (user_id, role, content),
             )
-            connection.execute(
-                """
-                DELETE FROM conversation_turns
-                WHERE user_id = ?
-                  AND id NOT IN (
-                    SELECT id
-                    FROM conversation_turns
-                    WHERE user_id = ?
-                    ORDER BY id DESC
-                    LIMIT ?
-                  )
-                """,
-                (user_id, user_id, self._max_turns),
-            )
+            row = connection.execute(
+                "SELECT COUNT(*) FROM conversation_turns WHERE user_id = ?",
+                (user_id,),
+            ).fetchone()
+            count = int(row[0]) if row else 0
+            excess = count - self._max_turns
+            if excess > 0:
+                connection.execute(
+                    """
+                    DELETE FROM conversation_turns
+                    WHERE id IN (
+                        SELECT id FROM conversation_turns
+                        WHERE user_id = ?
+                        ORDER BY id ASC
+                        LIMIT ?
+                    )
+                    """,
+                    (user_id, excess),
+                )
             connection.commit()
 
     def clear(self, user_id: int) -> None:

@@ -109,14 +109,16 @@ ollama-telegram-bot/
 │   ├── app.py
 │   ├── bot/
 │   │   ├── error_handler.py
-│   │   └── handlers.py
+│   │   └── handlers/
+│   │       └── __init__.py
 │   ├── config/
 │   │   └── settings.py
 │   ├── core/
 │   │   ├── context_store.py
 │   │   ├── model_preferences_store.py
 │   │   ├── rate_limiter.py
-│   │   └── user_assets_store.py
+│   │   ├── user_assets_store.py
+│   │   └── user_session.py
 │   ├── i18n/
 │   │   └── service.py
 │   ├── services/
@@ -128,11 +130,16 @@ ollama-telegram-bot/
 ├── tests/
 │   ├── test_context_store.py
 │   ├── test_context_store_sqlite.py
+│   ├── test_i18n_pluralization.py
 │   ├── test_i18n_service.py
+│   ├── test_model_orchestrator.py
 │   ├── test_model_preferences_store.py
 │   ├── test_rate_limiter.py
+│   ├── test_rate_limiter_purge_and_secrets.py
 │   ├── test_settings.py
-│   └── test_telegram_utils.py
+│   ├── test_settings_pagination.py
+│   ├── test_telegram_utils.py
+│   └── test_user_session.py
 ├── .env.example
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -177,6 +184,9 @@ services:
       FILES_CONTEXT_MAX_ITEMS: ${FILES_CONTEXT_MAX_ITEMS:-3}
       FILES_CONTEXT_MAX_CHARS: ${FILES_CONTEXT_MAX_CHARS:-6000}
       ASSET_TTL_DAYS: ${ASSET_TTL_DAYS:-30}
+      MODELS_PAGE_SIZE: ${MODELS_PAGE_SIZE:-8}
+      WEB_MODELS_PAGE_SIZE: ${WEB_MODELS_PAGE_SIZE:-8}
+      FILES_PAGE_SIZE: ${FILES_PAGE_SIZE:-6}
       BOT_DEFAULT_LOCALE: ${BOT_DEFAULT_LOCALE:-en}
       TZ: ${TZ:-Europe/Madrid}
 ```
@@ -207,6 +217,9 @@ See `.env.example` for the complete list and example values.
 - `FILES_CONTEXT_MAX_ITEMS`: Maximum number of user files injected as RAG context per message (default `3`).
 - `FILES_CONTEXT_MAX_CHARS`: Maximum total characters of RAG context injected per message (default `6000`).
 - `ASSET_TTL_DAYS`: Days after which stored user assets are automatically purged at startup (default `30`).
+- `MODELS_PAGE_SIZE`: Number of local models shown per page in the models list (default `8`).
+- `WEB_MODELS_PAGE_SIZE`: Number of web models shown per page in the web models list (default `8`).
+- `FILES_PAGE_SIZE`: Number of files shown per page in the files list (default `6`).
 - `BOT_DEFAULT_LOCALE`: Fallback locale when user Telegram language is not available in bot locales.
 - `TZ`: Timezone in IANA format (for example `Europe/Madrid`).
 

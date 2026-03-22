@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog, and this project follows Semantic Versioning.
 
+## [0.0.10] - 2026-03-22
+
+### Added
+- Added **`UserSessionStore`** (`src/core/user_session.py`): centralised per-user in-memory session state with automatic TTL-based cleanup, replacing six scattered `dict`/`set` fields in `BotHandlers`.
+- Added **FTS5 full-text search** for user assets: search queries now use a SQLite FTS5 virtual table (`user_assets_fts`) with automatic fallback to in-memory scoring.
+- Added **schema versioning** for `UserAssetsStore`: migrations are tracked in a `schema_versions` table instead of silent `try/except` column additions.
+- Added **i18n pluralization**: `I18nService.t()` now supports `count` kwarg with `.one`/`.other` sub-keys for plural-aware translations.
+- Added **`.env` file support** via `python-dotenv`: environment variables are loaded from `.env` automatically at startup.
+- Added **configurable pagination sizes** via `MODELS_PAGE_SIZE`, `WEB_MODELS_PAGE_SIZE`, and `FILES_PAGE_SIZE` environment variables.
+- Added **`SecretFilter`** in `src/utils/logging.py`: redacts Bearer tokens, API keys, and authorization values from log output.
+- Added **`purge_inactive()`** method to `SlidingWindowRateLimiter` for evicting stale per-user rate-limit entries.
+- Added **batch vision model cache** in `ModelOrchestrator`: vision capabilities for all models are fetched once and cached for 60 seconds, replacing per-model HTTP calls.
+- Added **stale-while-revalidate** pattern for web models cache in `BotHandlers`: returns stale data instantly while refreshing in the background.
+- Added **rate limiting to destructive callbacks** (`delete_model_callback`, `select_file_callback`).
+- Added `python-dotenv>=1.0,<2` dependency to `pyproject.toml`.
+- Added new test files: `test_user_session.py`, `test_i18n_pluralization.py`, `test_rate_limiter_purge_and_secrets.py`, `test_model_orchestrator.py`, `test_settings_pagination.py` — total tests increased from 30 to 65.
+
+### Changed
+- Converted `src/bot/handlers.py` to a **package** (`src/bot/handlers/`) to enable future modular splitting.
+- Optimised SQLite `DELETE` in `SQLiteContextStore.append()`: replaced `DELETE … WHERE id NOT IN (subquery)` with a count-first approach (`SELECT COUNT(*) + DELETE … ORDER BY id ASC LIMIT excess`).
+- Replaced per-operation `sqlite3.connect()` calls with **`threading.local()` connection reuse** in `SQLiteContextStore`, `ModelPreferencesStore`, `UserAssetsStore`, and `UserSessionStore`.
+- Improved search tokenisation: minimum token length reduced from 3 to 2 characters.
+- Unified all `os.getenv()` calls in `settings.py` through a consistent `_get_env()` helper.
+
 ## [0.0.9] - 2026-03-22
 
 ### Added

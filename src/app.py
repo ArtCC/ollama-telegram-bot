@@ -127,6 +127,9 @@ def main() -> None:
             if settings.rate_limit_max_messages > 0
             else None
         ),
+        models_page_size=settings.models_page_size,
+        web_models_page_size=settings.web_models_page_size,
+        files_page_size=settings.files_page_size,
     )
 
     register_handlers(application, handlers)

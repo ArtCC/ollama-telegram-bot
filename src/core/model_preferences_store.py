@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 
@@ -8,10 +9,15 @@ class ModelPreferencesStore:
     def __init__(self, db_path: str) -> None:
         self._db_path = Path(db_path)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._local = threading.local()
         self._init_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self._db_path, timeout=5)
+        conn = getattr(self._local, "conn", None)
+        if conn is None:
+            conn = sqlite3.connect(self._db_path, timeout=5)
+            self._local.conn = conn
+        return conn
 
     def _init_schema(self) -> None:
         with self._connect() as connection:

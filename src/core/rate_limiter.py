@@ -35,3 +35,18 @@ class SlidingWindowRateLimiter:
 
         events.append(now)
         return True
+
+    def purge_inactive(self, max_idle_seconds: float) -> int:
+        """Remove users whose last event is older than *max_idle_seconds*.
+
+        Returns the number of purged user entries.
+        """
+        now = self._now_provider()
+        cutoff = now - max_idle_seconds
+        stale = [
+            uid for uid, events in self._events_by_user.items()
+            if not events or events[-1] <= cutoff
+        ]
+        for uid in stale:
+            del self._events_by_user[uid]
+        return len(stale)
